@@ -104,7 +104,7 @@ public class NoticeMessage {
         repaint();
     }
     public static void repaint() {
-        if (redisplay()) 
-            RotPUI.instance().repaint();
+        if (redisplay())
+            rotp.model.game.SessionUI.get().repaint();
     }
 }

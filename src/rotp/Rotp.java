@@ -53,8 +53,42 @@ public class Rotp {
     public static int actualAlloc = -1;
     public static boolean reloadRecentSave = false;
     
-    static GraphicsDevice device = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice();
+    // debug logging lives here rather than RotPUI so that headless code
+    // paths (multiplayer server) never class-load the Swing UI
+    public static boolean useDebugFile = false;
+    private static java.io.PrintWriter debugFile = null;
+    public static java.io.PrintWriter debugFile() {
+        if (!useDebugFile)
+            return null;
+
+        if (debugFile == null) {
+            try {
+                java.io.FileOutputStream fout = new java.io.FileOutputStream(new File("rotp_log.txt"));
+                debugFile = new java.io.PrintWriter(fout, true);
+            }
+            catch (java.io.FileNotFoundException e) {
+                System.err.println("Rotp -- Unable to open debug file:  FileNotFoundException: " + e);
+            }
+        }
+        return debugFile;
+    }
+
+    // lazy so the class can load in a headless JVM (multiplayer server)
+    private static GraphicsDevice device;
+    private static GraphicsDevice device() {
+        if (device == null)
+            device = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice();
+        return device;
+    }
     public static void main(String[] args) {
+        if (containsArg(args, "--server")) {
+            rotp.mp.server.ServerMain.run(args);
+            return;
+        }
+        if (containsArg(args, "--client")) {
+            rotp.mp.client.ClientMain.run(args);
+            return;
+        }
         frame = new JFrame("Remnants of the Precursors");
         String loadSaveFile = "";
         if (args.length == 0) {
@@ -88,7 +122,7 @@ public class Rotp {
         
         if (UserPreferences.fullScreen()) {
             frame.setUndecorated(true);
-            device.setFullScreenWindow(frame);
+            device().setFullScreenWindow(frame);
             resizeAmt();
         }
         else if (UserPreferences.borderless()) {
@@ -98,7 +132,7 @@ public class Rotp {
         }
         else {
             frame.setResizable(false);
-            device.setFullScreenWindow(null);
+            device().setFullScreenWindow(null);
             setFrameSize();
         }
 
@@ -134,7 +168,24 @@ public class Rotp {
         frame.getContentPane().setPreferredSize(new Dimension(maxX,maxY));
         frame.pack();
     }
+    // ui scaling functions live here rather than RotPUI so that headless
+    // code paths (multiplayer server) never class-load the Swing UI
+    public static int scaledSize(int i) {
+        if (i < 1)
+            return (int) Math.ceil(resizeAmt()*i);
+        else if (i > 1)
+            return (int) Math.floor(resizeAmt()*i);
+        else
+            return i;
+    }
+    public static int unscaledSize(int i) {
+        return (int) Math.max(0, Math.ceil(i/resizeAmt()));
+    }
     public static float resizeAmt() {
+        if ((resizeAmt < 0) && GraphicsEnvironment.isHeadless()) {
+            resizeAmt = 1.0f;
+            return resizeAmt;
+        }
         int pct = UserPreferences.windowed() ? UserPreferences.screenSizePct() : 100;
         float sizeAdj = (float) pct / 100.0f;
         if (resizeAmt < 0) {

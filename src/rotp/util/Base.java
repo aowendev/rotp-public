@@ -61,6 +61,7 @@ import rotp.model.galaxy.Galaxy;
 import rotp.model.galaxy.StarSystem;
 import rotp.model.game.GameSession;
 import rotp.model.game.IGameOptions;
+import rotp.model.game.SessionUI;
 import rotp.model.tech.Tech;
 import rotp.model.tech.TechLibrary;
 import rotp.ui.BasePanel;
@@ -98,9 +99,9 @@ public interface Base {
     public default Empire player()         { return galaxy().player(); }
     public default boolean isPlayer(Empire e) { return galaxy().isPlayer(e); }
     public default LabelManager labels()   { return LabelManager.current(); }
-    public default IGameOptions newGameOptions()        { return RotPUI.newOptions(); }
-    public default void createNewGameOptions()          { RotPUI.createNewOptions(); }
-    public default void clearNewGameOptions()           { RotPUI.clearNewOptions(); }
+    public default IGameOptions newGameOptions()        { return GameSession.newOptions(); }
+    public default void createNewGameOptions()          { GameSession.createNewOptions(); }
+    public default void clearNewGameOptions()           { GameSession.clearNewOptions(); }
 
     public default Object sessionVar(String key) {
         return session().var(key);
@@ -112,10 +113,10 @@ public interface Base {
         session().var(key,  value);
     }
     public default int scaled(int i) {
-        return RotPUI.scaledSize(i);
+        return Rotp.scaledSize(i);
     }
     public default int unscaled(int i) {
-        return RotPUI.unscaledSize(i);
+        return Rotp.unscaledSize(i);
     }
     public default void mapClick()    { playAudioClip("MapClick"); }
     public default void buttonClick() { playAudioClip("ButtonClick"); }
@@ -192,21 +193,21 @@ public interface Base {
     }
     public default void exception(Exception e) {
         e.printStackTrace();
-        if (RotPUI.useDebugFile) {
-            PrintWriter debugFile = RotPUI.debugFile();
+        if (Rotp.useDebugFile) {
+            PrintWriter debugFile = Rotp.debugFile();
             if (debugFile != null) {
                 e.printStackTrace(debugFile);
                 debugFile.flush();
             }
         }
-        RotPUI.instance().selectErrorPanel(e);
+        SessionUI.get().showError(e);
     }
     public default void err(String... text) {
         String output = concat(text);
         try {
             System.err.println(output);
-            if (RotPUI.useDebugFile) {
-                PrintWriter debugFile = RotPUI.debugFile();
+            if (Rotp.useDebugFile) {
+                PrintWriter debugFile = Rotp.debugFile();
                 if (debugFile != null) {
                     debugFile.println(output);
                     debugFile.flush();
@@ -221,8 +222,8 @@ public interface Base {
         String output = concat(text);
         try {
             System.out.println(output);
-            if (RotPUI.useDebugFile) {
-                PrintWriter debugFile = RotPUI.debugFile();
+            if (Rotp.useDebugFile) {
+                PrintWriter debugFile = Rotp.debugFile();
                 if (debugFile != null) {
                     debugFile.println(output);
                     debugFile.flush();

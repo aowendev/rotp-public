@@ -1,6 +1,6 @@
 package rotp.util;
 
-import rotp.ui.RotPUI;
+import rotp.Rotp;
 
 import java.io.PrintWriter;
 import java.util.function.Consumer;
@@ -15,8 +15,8 @@ public class Logger {
     }
 
     public static void logToFile(String line) {
-        if (RotPUI.useDebugFile) {
-            PrintWriter debugFile = RotPUI.debugFile();
+        if (Rotp.useDebugFile) {
+            PrintWriter debugFile = Rotp.debugFile();
             if (debugFile != null) {
                 debugFile.println(line);
                 debugFile.flush();

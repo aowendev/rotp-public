@@ -1,4 +1,6 @@
 dist
+target
+dependency-reduced-pom.xml
 nbproject
 test
 build

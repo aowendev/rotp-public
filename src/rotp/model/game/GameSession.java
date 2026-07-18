@@ -54,7 +54,6 @@ import rotp.model.ships.ShipWeapon;
 import rotp.model.tech.Tech;
 import rotp.model.tech.TechTree;
 import rotp.ui.NoticeMessage;
-import rotp.ui.RotPUI;
 import rotp.ui.UserPreferences;
 import rotp.ui.notifications.GameAlert;
 import rotp.ui.notifications.SabotageNotification;
@@ -235,6 +234,17 @@ public final class GameSession implements Base, Serializable {
     public GameSession() {
         options(RulesetManager.current().defaultRuleset());
     }
+    // pending options for a game being set up; here rather than RotPUI so
+    // that headless code paths never class-load the Swing UI
+    private static IGameOptions pendingNewGameOptions;
+    public static IGameOptions newOptions() {
+        if (pendingNewGameOptions == null)
+            createNewOptions();
+        return pendingNewGameOptions;
+    }
+    public static void createNewOptions()  { pendingNewGameOptions = new MOO1GameOptions(); }
+    public static void clearNewOptions()   { pendingNewGameOptions = null; }
+
     public void startGame(IGameOptions newGameOptions) {
         stopCurrentGame();
         
@@ -260,7 +270,7 @@ public final class GameSession implements Base, Serializable {
         smallSphereService = Executors.newSingleThreadExecutor();
     }
     private void stopCurrentGame() {
-        RotPUI.instance().mainUI().clearAdvice();
+        SessionUI.get().clearAdvice();
         vars().clear();
         clearAlerts();
         // shut down any threads running from previous game
@@ -314,7 +324,7 @@ public final class GameSession implements Base, Serializable {
                 String turnTitle = nextTurnTitle();
                 NoticeMessage.setStatus(turnTitle, text("TURN_SAVING"));
                 FlightPathSprite.clearWorkingPaths();
-                RotPUI.instance().mainUI().saveMapState();
+                SessionUI.get().saveMapState();
                 log("Next Turn - BEGIN: ", str(galaxy.currentYear()));
                 log("Autosaving pre-turn");
                 instance.saveRecentSession(false);
@@ -325,7 +335,7 @@ public final class GameSession implements Base, Serializable {
                 shipsConstructed().clear();
                 spyActivity = false;
                 clearAlerts();
-                RotPUI.instance().repaint();
+                SessionUI.get().repaint();
                 processNotifications();
                 gal.preNextTurn();
                 
@@ -341,7 +351,7 @@ public final class GameSession implements Base, Serializable {
                 gal.moveShipsInTransit();
                 
                 gal.events().nextTurn();
-                RotPUI.instance().selectMainPanel();
+                SessionUI.get().selectMainPanel();
 
                 gal.council().nextTurn();
                 GNNRankingNoticeCheck.nextTurn();
@@ -357,7 +367,7 @@ public final class GameSession implements Base, Serializable {
 
                 if (processNotifications()) {
                     log("Notifications processed 1 - back to MainPanel");
-                    RotPUI.instance().selectMainPanel();
+                    SessionUI.get().selectMainPanel();
                 }
                 gal.postNextTurn1();
                 if (!inProgress())
@@ -365,7 +375,7 @@ public final class GameSession implements Base, Serializable {
 
                 if (processNotifications()) {
                     log("Notifications processed 2 - back to MainPanel");
-                    RotPUI.instance().selectMainPanel();
+                    SessionUI.get().selectMainPanel();
                 }
                 gal.refreshAllEmpireViews();
                 gal.postNextTurn2();
@@ -374,23 +384,23 @@ public final class GameSession implements Base, Serializable {
                     return;
                 if (processNotifications()) {
                     log("Notifications processed 3 - back to MainPanel");
-                    RotPUI.instance().selectMainPanel();
+                    SessionUI.get().selectMainPanel();
                 }
                 // all diplomatic fallout: praise, warnings, treaty offers, war declarations
                 gal.assessTurn();
                 
                 if (processNotifications()){
                     log("Notifications processed 4 - back to MainPanel");
-                    RotPUI.instance().selectMainPanel();
+                    SessionUI.get().selectMainPanel();
                 }
                 gal.makeNextTurnDecisions();
 
                 if (processNotifications()){
                     log("Notifications processed 5 - back to MainPanel");
-                    RotPUI.instance().selectMainPanel();
+                    SessionUI.get().selectMainPanel();
                 }
                 if (!systemsToAllocate().isEmpty())
-                    RotPUI.instance().allocateSystems();
+                    SessionUI.get().allocateSystems();
 
                 if (spyActivity)
                     SpyReportAlert.create();
@@ -406,8 +416,8 @@ public final class GameSession implements Base, Serializable {
                 instance.saveRecentSession(true);
 
                 log("Reselecting main panel");
-                RotPUI.instance().mainUI().showDisplayPanel();
-                RotPUI.instance().selectMainPanel();
+                SessionUI.get().showDisplayPanel();
+                SessionUI.get().selectMainPanel();
                 notifications().clear();
                 // ensure Next Turn takes at least a minimum time
                 long spentMs = timeMs() - startMs;
@@ -415,7 +425,7 @@ public final class GameSession implements Base, Serializable {
                     try { Thread.sleep(MINIMUM_NEXT_TURN_TIME - spentMs);
                     } catch (InterruptedException e) { }
                 }
-                RotPUI.instance().repaint();
+                SessionUI.get().repaint();
                 log("Next Turn - END: ", str(galaxy.currentYear()));
             }
             catch(Exception e) {
@@ -423,12 +433,12 @@ public final class GameSession implements Base, Serializable {
                 exception(e);
             }
             finally {
-                RotPUI.instance().mainUI().restoreMapState();
+                SessionUI.get().restoreMapState();
                 if (Rotp.memoryLow())
-                    RotPUI.instance().mainUI().showMemoryLowPrompt();
+                    SessionUI.get().showMemoryLowPrompt();
                 // handle game over possibility
                 if (!session().status().inProgress())
-                    RotPUI.instance().selectGameOverPanel();
+                    SessionUI.get().selectGameOverPanel();
                 performingTurn = false;
             }
         };
@@ -446,7 +456,7 @@ public final class GameSession implements Base, Serializable {
         Collections.sort(notifs);
         notifications().clear();
 
-        RotPUI.instance().processNotifications(notifs);
+        SessionUI.get().processNotifications(notifs);
         clearScoutedSystems();
         return true;
     }
@@ -760,9 +770,9 @@ public final class GameSession implements Base, Serializable {
         stopCurrentGame();
         instance = gs;
         startExecutors();
-        RotPUI.instance().mainUI().checkMapInitialized();
+        SessionUI.get().checkMapInitialized();
         if (!startUp) {
-            RotPUI.instance().selectMainPanelLoadGame();
+            SessionUI.get().selectMainPanelLoadGame();
         }
     }
     public String saveDir() {
@@ -802,7 +812,7 @@ public final class GameSession implements Base, Serializable {
         catch(Exception e) {
             err("Error saving: ", filename, " - ", e.getMessage());
             if (endOfTurn)
-                RotPUI.instance().mainUI().showAutosaveFailedPrompt(e.getMessage());
+                SessionUI.get().showAutosaveFailedPrompt(e.getMessage());
         }
     }
     public void saveBackupSession(int turn) {
@@ -818,7 +828,7 @@ public final class GameSession implements Base, Serializable {
         }
         catch(Exception e) {
             err("Error saving: ", filename, " - ", e.getMessage());
-            RotPUI.instance().mainUI().showAutosaveFailedPrompt(e.getMessage());
+            SessionUI.get().showAutosaveFailedPrompt(e.getMessage());
         }
         
     }

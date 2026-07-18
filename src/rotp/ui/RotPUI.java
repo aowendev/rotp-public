@@ -40,6 +40,7 @@ import rotp.model.empires.EspionageMission;
 import rotp.model.empires.SabotageMission;
 import rotp.model.galaxy.ShipFleet;
 import rotp.model.galaxy.Transport;
+import rotp.model.game.GameSession;
 import rotp.model.game.IGameOptions;
 import rotp.model.game.MOO1GameOptions;
 import rotp.model.planet.PlanetFactory;
@@ -83,7 +84,7 @@ import rotp.util.LanguageManager;
 import rotp.util.Logger;
 import rotp.util.sound.SoundManager;
 
-public class RotPUI extends BasePanel implements ActionListener, KeyListener {
+public class RotPUI extends BasePanel implements ActionListener, KeyListener, rotp.model.game.SessionUI {
     private static final long serialVersionUID = 1L;
     private static int FPS = 10;
     public static int ANIMATION_TIMER = 100;
@@ -124,8 +125,6 @@ public class RotPUI extends BasePanel implements ActionListener, KeyListener {
         catch (Throwable t) { startupException = t; System.out.println("Err: UserPreferences init: "+t.getMessage()); }
     }
 
-    public static boolean useDebugFile = false;
-    public static IGameOptions newGameOptions;
 
     private static final String SETUP_RACE_PANEL = "SetupRace";
     private static final String SETUP_GALAXY_PANEL = "SetupGalaxy";
@@ -156,7 +155,6 @@ public class RotPUI extends BasePanel implements ActionListener, KeyListener {
 
     private static final RotPUI instance = new RotPUI();
 
-    private static PrintWriter debugFile = null;
 
     public static void fps(int fps) {
         // bound arg between 10 & 60
@@ -168,32 +166,9 @@ public class RotPUI extends BasePanel implements ActionListener, KeyListener {
         ANIMATION_TIMER = 1000/FPS;
         instance.resetTimer();
     }
-    public static int scaledSize(int i) {
-        if (i < 1)
-            return (int) Math.ceil(Rotp.resizeAmt()*i);
-        else if (i > 1)
-            return (int) Math.floor(Rotp.resizeAmt()*i);
-        else
-            return i;
-    }
-    public static int unscaledSize(int i) {
-        return (int) Math.max(0, Math.ceil(i/Rotp.resizeAmt()));
-    }
-    public static PrintWriter debugFile() {
-        if (!useDebugFile)
-            return null;
-
-        if (debugFile == null) {
-            try {
-                FileOutputStream fout = new FileOutputStream(new File("rotp_log.txt"));
-                debugFile = new PrintWriter(fout, true);
-            }
-            catch (FileNotFoundException e) {
-                System.err.println("RotpUI.static<> -- Unable to open debug file:  FileNotFoundException: " + e);
-            }
-        }
-        return debugFile;
-    }
+    public static int scaledSize(int i)   { return Rotp.scaledSize(i); }
+    public static int unscaledSize(int i) { return Rotp.unscaledSize(i); }
+    public static PrintWriter debugFile() { return Rotp.debugFile(); }
 
     private final GameUI gameUI = new GameUI();
     private final LoadGameUI loadGameUI = new LoadGameUI();
@@ -283,13 +258,9 @@ public class RotPUI extends BasePanel implements ActionListener, KeyListener {
         //toggleAnimations();
         repaint();
     }
-    public static IGameOptions newOptions() { 
-        if (newGameOptions == null)
-            createNewOptions();
-        return newGameOptions; 
-    }
-    public static void createNewOptions()               { newGameOptions = new MOO1GameOptions(); }
-    public static void clearNewOptions()                { newGameOptions = null; }
+    public static IGameOptions newOptions()             { return GameSession.newOptions(); }
+    public static void createNewOptions()               { GameSession.createNewOptions(); }
+    public static void clearNewOptions()                { GameSession.clearNewOptions(); }
 
     public void toggleAnimations() {
         if (playAnimations())
@@ -298,6 +269,22 @@ public class RotPUI extends BasePanel implements ActionListener, KeyListener {
             timer.stop();
     }
     public static RotPUI instance()                  { return instance; }
+
+    // SessionUI delegates for main-panel operations (see rotp.model.game.SessionUI)
+    @Override
+    public void saveMapState()                       { mainUI().saveMapState(); }
+    @Override
+    public void restoreMapState()                    { mainUI().restoreMapState(); }
+    @Override
+    public void showDisplayPanel()                   { mainUI().showDisplayPanel(); }
+    @Override
+    public void showMemoryLowPrompt()                { mainUI().showMemoryLowPrompt(); }
+    @Override
+    public void showAutosaveFailedPrompt(String err) { mainUI().showAutosaveFailedPrompt(err); }
+    @Override
+    public void checkMapInitialized()                { mainUI().checkMapInitialized(); }
+    @Override
+    public void showError(Exception e)               { selectErrorPanel(e); }
     public static HelpUI helpUI()                    { return instance.helpUI; } 
     public static StartOptionsUI startOptionsUI()    { return instance.startOptionsUI; } 
     public static GameSettingsUI gameSettingsUI()    { return instance.gameSettingsUI; } 
