@@ -40,6 +40,11 @@ public final class PlayerView {
     /** empires this player has contacted (plus itself) */
     public List<EmpireDto> empires = new ArrayList<>();
     public List<SystemDto> systems = new ArrayList<>();
+    /** this empire's fleets (visible foreign fleets come in a later phase) */
+    public List<FleetDto> fleets = new ArrayList<>();
+    /** this empire's active ship design slots */
+    public List<DesignDto> designs = new ArrayList<>();
+    public TechDto tech;
 
     public static class EmpireDto {
         public int id;
@@ -58,5 +63,37 @@ public final class PlayerView {
         public String planetType;  // key like "PLANET_TERRAN", null until scouted
         public boolean colonized;  // as known to this player
         public int population;     // last known
+        public ColonyDto colony;   // full detail, own colonies only
+    }
+
+    /** spending categories: 0=ship 1=def 2=ind 3=eco 4=tech, ticks sum to 50 */
+    public static class ColonyDto {
+        public int[] alloc;
+        public boolean[] locked;
+        public float population;
+        public float factories;
+        public float bases;
+        public float production;      // BC produced this turn
+        public String shipyardDesign;
+    }
+
+    /** research: 6 categories (computer/construction/forcefield/planetology/propulsion/weapon) */
+    public static class TechDto {
+        public int[] alloc;           // ticks 0-60 per category
+        public String[] researching;  // current tech name per category, null if none
+        public float totalRP;
+    }
+
+    public static class FleetDto {
+        public int atSystemId;    // -1 when in transit
+        public int destSystemId;  // -1 when orbiting with no deployment
+        public float x;
+        public float y;
+        public int[] counts;      // ships per design slot
+    }
+
+    public static class DesignDto {
+        public int slot;
+        public String name;
     }
 }

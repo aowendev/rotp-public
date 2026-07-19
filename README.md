@@ -17,6 +17,7 @@ This fork adds online multiplayer to ROTP, developed on the `multiplayer` branch
 - **JSON + WebSocket wire protocol** (`rotp.mp.protocol`): messages use a `{"t": <type>, "d": <payload>}` envelope. Game state is sent as per-player `PlayerView` documents built from each empire's fog-of-war data (`SystemInfo`/`EmpireView`), so a client only ever receives what its empire legitimately knows.
 - **We-go turns**: all players issue orders simultaneously; the server resolves the turn when everyone is ready. Mid-turn interactive events (combat tactics, tech choices, incoming diplomacy, council votes) are auto-resolved by each empire's own AI — the approach the MOO2/MOO3 multiplayer community converged on — with optional interactivity planned for a later phase. Player-to-player diplomacy will happen asynchronously during the order phase.
 - **`SessionUI` seam** (`rotp.model.game.SessionUI`): game-session and turn processing no longer call the Swing UI directly. The desktop game registers `RotPUI` as the implementation; the server registers a headless one. This is what lets the unmodified game engine run on a server with no display.
+- **Two control predicates on `Empire`** (the key multiplayer refactor): `isAIControlled()` still answers "should interactive prompts auto-resolve?" — true for every empire on the server, so combat, tech picks, and diplomacy never try to open UI. The new `decidedByAI()` answers "may the AI overwrite this empire's strategic orders?" — false for empires flagged `remoteHuman`, so wire orders survive turn resolution. Anyone adding AI decision code must gate it on `decidedByAI()`, not `isAIControlled()`.
 
 ## Building
 
@@ -46,6 +47,26 @@ java -jar target/rotp-*.jar --client host=localhost port=8777 name=Alice
 
 The server starts a game as soon as `players` clients have joined. For LAN play, clients use the host machine's address; for internet play, the same server can run on any reachable machine.
 
+## Protocol (v1)
+
+Messages are JSON over WebSocket in a `{"t": <type>, "d": <payload>}` envelope; types are registered in `rotp.mp.protocol.Protocol`. Current vocabulary:
+
+| Type | Direction | Purpose |
+|---|---|---|
+| `hello` | client → server | Join with protocol version + player name |
+| `lobby` | server → client | Roster of joined players, sent on every change |
+| `gameStarted` | server → client | Game created; tells the client its empire id |
+| `view` | server → client | `PlayerView`: everything this empire knows — systems (fog-of-war), own colonies (spending, pop, factories, bases, production), research state, fleets, ship design slots. Sent on game start, after every turn, and after each accepted order |
+| `setColonyAlloc` | client → server | Colony spending: 5 categories (ship/def/ind/eco/tech), ticks summing to 50, locked categories honored |
+| `setTechAlloc` | client → server | Research allocation: 6 categories, 0–60 ticks each |
+| `deployFleet` | client → server | Send an orbiting fleet (whole, or per-design counts) to a system in range |
+| `cmdResult` | server → client | Accept/reject for an order, with reason ("Not your colony", "Destination out of range", …) |
+| `ready` | client → server | We-go ready flag; the turn resolves when all players are ready |
+| `turnStatus` | server → client | Ready counts and turn-resolution progress |
+| `error` | server → client | Connection-level errors (version mismatch, game full) |
+
+All orders are validated server-side against the sending player's empire; clients are untrusted.
+
 ## Status
 
 **Phase 0 — walking skeleton (done):**
@@ -55,9 +76,15 @@ The server starts a game as soon as `players` clients have joined. For LAN play,
 - Minimal client: joins a lobby, renders the galaxy map purely from `PlayerView` JSON, and can advance the turn.
 - Verified end-to-end: two clients with distinct fog-of-war views, 15-turn headless soak, desktop regression.
 
+**Phase 1 — playing the game (in progress):**
+- Done: per-empire human control — players' empires are flagged `remoteHuman`, so the AI auto-resolves their mid-turn prompts but never overwrites their strategic orders (`Empire.decidedByAI()`).
+- Done: first commands with server-side ownership validation — colony spending allocation, research allocation, fleet deployment — plus we-go ready flags (turn resolves when all players are ready; a disconnect can't block the turn).
+- Done: `PlayerView` carries own-colony detail, research state, fleets, and ship design slots; every accepted order returns a fresh view.
+- Verified by a scripted two-player test: hostile/invalid orders rejected, orders survive turn resolution, deployed fleets move.
+- Remaining: transports, ship design, spying and diplomacy commands; per-empire notification delivery; porting the real game screens to the protocol.
+
 **Roadmap:**
-1. **Phase 1 — playing the game**: JSON command layer (colony spending, fleet orders, transports, tech allocation, ship design, spying, diplomacy actions) with server-side ownership validation; human empires stop being AI-decided; core game screens ported to the protocol; per-empire notification delivery.
-2. **Phase 2 — full we-go multiplayer on LAN**: ready flags, reconnection, saves/loads of multiplayer games.
-3. **Phase 3 — optional interactivity**: remote prompts for tech choices/diplomacy/council votes with turn timers; async player-to-player diplomacy.
-4. **Phase 4 — internet hosting**: persistent lobby, authentication, server deployment.
-5. **Phase 5 — browser client** speaking the same protocol.
+1. **Phase 2 — full we-go multiplayer on LAN**: reconnection, saves/loads of multiplayer games, lobby polish (race/color picks).
+2. **Phase 3 — optional interactivity**: remote prompts for tech choices/diplomacy/council votes with turn timers; async player-to-player diplomacy.
+3. **Phase 4 — internet hosting**: persistent lobby, authentication, server deployment.
+4. **Phase 5 — browser client** speaking the same protocol.

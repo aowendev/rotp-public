@@ -106,6 +106,7 @@ public final class Empire implements Base, NamedObject, Serializable {
     private final List<StarSystem> colonizedSystems = new ArrayList<>();
     private boolean extinct = false;
     private boolean galacticAlliance = false;
+    private boolean remoteHuman = false;   // multiplayer: controlled by a remote human
     private int lastCouncilVoteEmpId = Empire.NULL_ID;
     private Colony.Orders priorityOrders = Colony.Orders.NONE;
     private int bannerColor;
@@ -417,6 +418,12 @@ public final class Empire implements Base, NamedObject, Serializable {
     public boolean isAI()                { return id != PLAYER_ID; };
     public boolean isPlayerControlled()  { return !isAIControlled(); }
     public boolean isAIControlled()      { return isAI() || options().isAutoPlay(); }
+    // multiplayer: a remote human's empire. isAIControlled() stays true for
+    // it on the server (so interactive prompts auto-resolve), but strategic
+    // decisions must not be overwritten by the AI - gate those on decidedByAI()
+    public boolean isRemoteHuman()       { return remoteHuman; }
+    public void makeRemoteHuman()        { remoteHuman = true; }
+    public boolean decidedByAI()         { return isAIControlled() && !remoteHuman; }
     public Color color()                 { return options().color(bannerColor); }
     public int shipColorId()             { return colorId(); }
     @Override
@@ -966,7 +973,7 @@ public final class Empire implements Base, NamedObject, Serializable {
         shipLab.nextTurn();
         
         // empire settings
-        if (isAIControlled()) {
+        if (decidedByAI()) {
             scientistAI().setTechTreeAllocations();
             securityAllocation = spyMasterAI().suggestedInternalSecurityLevel();
             empireTaxLevel = governorAI().suggestedEmpireTaxLevel();
@@ -977,7 +984,7 @@ public final class Empire implements Base, NamedObject, Serializable {
             ai().sendTransports();
         }
 
-        if (isAIControlled()) {
+        if (decidedByAI()) {
             ai().treasurer().allocateReserve();
             // diplomatic activities
             for (EmpireView ev : empireViews()) {

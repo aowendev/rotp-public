@@ -36,13 +36,17 @@ public final class Protocol {
     private static final Map<Class<?>, String> BY_CLASS = new HashMap<>();
 
     static {
-        register("hello",       Messages.Hello.class);
-        register("lobby",       Messages.Lobby.class);
-        register("gameStarted", Messages.GameStarted.class);
-        register("nextTurn",    Messages.NextTurn.class);
-        register("turnStatus",  Messages.TurnStatus.class);
-        register("error",       Messages.Error.class);
-        register("view",        PlayerView.class);
+        register("hello",          Messages.Hello.class);
+        register("lobby",          Messages.Lobby.class);
+        register("gameStarted",    Messages.GameStarted.class);
+        register("ready",          Messages.Ready.class);
+        register("turnStatus",     Messages.TurnStatus.class);
+        register("error",          Messages.Error.class);
+        register("view",           PlayerView.class);
+        register("setColonyAlloc", Messages.SetColonyAllocations.class);
+        register("setTechAlloc",   Messages.SetTechAllocations.class);
+        register("deployFleet",    Messages.DeployFleet.class);
+        register("cmdResult",      Messages.CommandResult.class);
     }
 
     private Protocol() { }

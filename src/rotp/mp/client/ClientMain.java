@@ -48,7 +48,7 @@ public class ClientMain {
 
         GalaxyViewPanel galaxyPanel = new GalaxyViewPanel();
         JLabel status = new JLabel("Connecting to "+host+":"+port+"...");
-        JButton nextTurn = new JButton("Next Turn");
+        JButton nextTurn = new JButton("Ready");
         nextTurn.setEnabled(false);
 
         JPanel bottom = new JPanel(new BorderLayout());
@@ -72,8 +72,8 @@ public class ClientMain {
 
         nextTurn.addActionListener(e -> {
             nextTurn.setEnabled(false);
-            status.setText("Requesting next turn...");
-            clientHolder[0].requestNextTurn();
+            status.setText("Ready - waiting for other players...");
+            clientHolder[0].sendReady(true);
         });
 
         client.connect();
@@ -96,9 +96,14 @@ public class ClientMain {
         }
         else if (msg instanceof Messages.TurnStatus) {
             Messages.TurnStatus ts = (Messages.TurnStatus) msg;
-            status.setText(ts.note+" (turn "+ts.turn+")");
+            status.setText(ts.note+" (turn "+ts.turn+", ready "+ts.readyCount+"/"+ts.totalPlayers+")");
             if (ts.processing)
                 nextTurn.setEnabled(false);
+        }
+        else if (msg instanceof Messages.CommandResult) {
+            Messages.CommandResult cr = (Messages.CommandResult) msg;
+            if (!cr.ok)
+                status.setText("Order rejected ("+cr.command+"): "+cr.text);
         }
         else if (msg instanceof Messages.Error) {
             status.setText("Server error: "+((Messages.Error) msg).text);

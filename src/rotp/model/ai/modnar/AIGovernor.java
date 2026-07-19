@@ -55,7 +55,7 @@ public class AIGovernor implements Base, Governor {
     }
     @Override
     public void setColonyAllocations(Colony col) {
-        if (empire.isAIControlled()) {
+        if (empire.decidedByAI()) {
             baseSetColonyAllocations(col);
             col.validate();
             return;
@@ -109,7 +109,12 @@ public class AIGovernor implements Base, Governor {
         if (col.research().hasCompletedProject()) 
             session().addSystemToAllocate(sys, text("MAIN_ALLOCATE_PROJECT_ENDED", name, col.research().completedProject().projectKey()));
             
-        if (col.hasNewOrders() || (col.allocationRemaining() != 0) || session().awaitingAllocation(sys)) {
+        // remote humans issue explicit allocations over the wire; only assist
+        // when the colony has unallocated ticks (e.g. newly founded)
+        boolean assist = empire.isRemoteHuman()
+            ? col.allocationRemaining() != 0
+            : col.hasNewOrders() || (col.allocationRemaining() != 0) || session().awaitingAllocation(sys);
+        if (assist) {
             baseSetPlayerAllocations(col);
             col.validate();
         }
@@ -358,7 +363,7 @@ public class AIGovernor implements Base, Governor {
         return min(maxAllowed, col.totalIncome()*shipPctForColony(col));
     }
     public void suggestMissileBaseCount(Colony col) {
-        if (empire.isAIControlled())
+        if (empire.decidedByAI())
             suggestMissileBaseCount(col, col.production());
     }
     public void suggestMissileBaseCount(Colony col, float prod) {

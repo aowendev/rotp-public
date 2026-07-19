@@ -49,15 +49,48 @@ public final class Messages {
         public int empireId;
     }
 
-    /** client -> server: advance the turn (walking skeleton; later replaced by per-player ready flags) */
-    public static class NextTurn {
+    /** client -> server: we-go ready flag; turn resolves when all players are ready */
+    public static class Ready {
+        public boolean ready = true;
     }
 
-    /** server -> client: turn processing state */
+    /** server -> client: turn processing / readiness state */
     public static class TurnStatus {
         public boolean processing;
         public int turn;
+        public int readyCount;
+        public int totalPlayers;
         public String note;
+    }
+
+    // ---- orders (client -> server), all validated against the sender's empire ----
+
+    /** replace a colony's spending allocation; 5 categories (ship/def/ind/eco/tech), ticks summing to 50 */
+    public static class SetColonyAllocations {
+        public int systemId;
+        public int[] alloc;
+    }
+
+    /** replace empire research allocation; 6 categories, ticks 0-60 each, sum <= 60 */
+    public static class SetTechAllocations {
+        public int[] alloc;
+    }
+
+    /**
+     * send ships from an orbiting fleet to another system.
+     * counts is per design slot (6); null or empty deploys the whole fleet.
+     */
+    public static class DeployFleet {
+        public int fromSystemId;
+        public int destSystemId;
+        public int[] counts;
+    }
+
+    /** server -> client: acknowledgement/rejection of an order */
+    public static class CommandResult {
+        public String command;
+        public boolean ok;
+        public String text;
     }
 
     /** server -> client */

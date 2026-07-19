@@ -73,8 +73,11 @@ public class NetClient extends WebSocketClient {
         statusListener.accept("Connection error: "+ex.getMessage());
     }
 
-    public void requestNextTurn() {
-        if (isOpen())
-            send(Protocol.encode(new Messages.NextTurn()));
+    public void sendReady(boolean ready) {
+        if (isOpen()) {
+            Messages.Ready msg = new Messages.Ready();
+            msg.ready = ready;
+            send(Protocol.encode(msg));
+        }
     }
 }

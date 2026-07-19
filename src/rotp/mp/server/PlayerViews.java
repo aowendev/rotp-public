@@ -15,11 +15,17 @@
  */
 package rotp.mp.server;
 
+import rotp.model.colony.Colony;
 import rotp.model.empires.Empire;
 import rotp.model.galaxy.Galaxy;
+import rotp.model.galaxy.ShipFleet;
 import rotp.model.galaxy.StarSystem;
 import rotp.model.game.GameSession;
 import rotp.model.planet.PlanetType;
+import rotp.model.ships.ShipDesign;
+import rotp.model.ships.ShipDesignLab;
+import rotp.model.tech.TechCategory;
+import rotp.model.tech.TechTree;
 import rotp.mp.protocol.PlayerView;
 
 /**
@@ -67,8 +73,76 @@ public final class PlayerViews {
                 PlanetType pt = emp.sv.planetType(i);
                 sd.planetType = (pt == null) ? null : pt.key();
             }
+            if ((sys.empire() == emp) && sys.isColonized())
+                sd.colony = colonyDto(sys.colony());
             v.systems.add(sd);
         }
+
+        v.tech = techDto(emp.tech());
+        v.fleets = fleetDtos(gal, emp);
+        v.designs = designDtos(emp);
         return v;
+    }
+
+    private static PlayerView.ColonyDto colonyDto(Colony col) {
+        PlayerView.ColonyDto c = new PlayerView.ColonyDto();
+        c.alloc = new int[Colony.NUM_CATS];
+        c.locked = new boolean[Colony.NUM_CATS];
+        for (int i = 0; i < Colony.NUM_CATS; i++) {
+            c.alloc[i] = col.allocation(i);
+            c.locked[i] = col.locked(i);
+        }
+        c.population = col.population();
+        c.factories = col.industry().factories();
+        c.bases = col.defense().bases();
+        c.production = col.production();
+        rotp.model.ships.Design d = col.shipyard().design();
+        c.shipyardDesign = (d == null) ? null : d.name();
+        return c;
+    }
+
+    private static PlayerView.TechDto techDto(TechTree tech) {
+        PlayerView.TechDto t = new PlayerView.TechDto();
+        t.alloc = new int[TechTree.NUM_CATEGORIES];
+        t.researching = new String[TechTree.NUM_CATEGORIES];
+        for (int i = 0; i < TechTree.NUM_CATEGORIES; i++) {
+            TechCategory cat = tech.category(i);
+            t.alloc[i] = cat.allocation();
+            t.researching[i] = (cat.currentTech() == null) ? null : cat.currentTechName();
+        }
+        t.totalRP = tech.empire().totalPlanetaryResearch();
+        return t;
+    }
+
+    private static java.util.List<PlayerView.FleetDto> fleetDtos(Galaxy gal, Empire emp) {
+        java.util.List<PlayerView.FleetDto> out = new java.util.ArrayList<>();
+        for (ShipFleet fl : gal.ships.allFleets(emp.id)) {
+            if (!fl.isActive())
+                continue;
+            PlayerView.FleetDto f = new PlayerView.FleetDto();
+            f.atSystemId = fl.isOrbiting() ? fl.sysId() : -1;
+            f.destSystemId = fl.destSysId();
+            f.x = fl.x();
+            f.y = fl.y();
+            f.counts = new int[ShipDesignLab.MAX_DESIGNS];
+            for (int i = 0; i < ShipDesignLab.MAX_DESIGNS; i++)
+                f.counts[i] = fl.num(i);
+            out.add(f);
+        }
+        return out;
+    }
+
+    private static java.util.List<PlayerView.DesignDto> designDtos(Empire emp) {
+        java.util.List<PlayerView.DesignDto> out = new java.util.ArrayList<>();
+        for (int slot = 0; slot < ShipDesignLab.MAX_DESIGNS; slot++) {
+            ShipDesign d = emp.shipLab().design(slot);
+            if ((d == null) || !d.active())
+                continue;
+            PlayerView.DesignDto dto = new PlayerView.DesignDto();
+            dto.slot = slot;
+            dto.name = d.name();
+            out.add(dto);
+        }
+        return out;
     }
 }
