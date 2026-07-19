@@ -29,6 +29,7 @@ import rotp.model.galaxy.StarSystem;
 import rotp.model.game.GameSession;
 import rotp.model.game.IGameOptions;
 import rotp.model.game.MOO1GameOptions;
+import rotp.model.ships.ShipDesign;
 import rotp.model.ships.ShipDesignLab;
 import rotp.model.tech.TechCategory;
 import rotp.model.tech.TechTree;
@@ -116,6 +117,20 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "setTechAlloc", (Messages.SetTechAllocations) msg);
         else if (msg instanceof Messages.DeployFleet)
             handleCommand(conn, "deployFleet", (Messages.DeployFleet) msg);
+        else if (msg instanceof Messages.SendTransports)
+            handleCommand(conn, "sendTransports", (Messages.SendTransports) msg);
+        else if (msg instanceof Messages.AbortTransports)
+            handleCommand(conn, "abortTransports", (Messages.AbortTransports) msg);
+        else if (msg instanceof Messages.Colonize)
+            handleCommand(conn, "colonize", (Messages.Colonize) msg);
+        else if (msg instanceof Messages.CreateDesign)
+            handleCommand(conn, "createDesign", (Messages.CreateDesign) msg);
+        else if (msg instanceof Messages.ScrapDesign)
+            handleCommand(conn, "scrapDesign", (Messages.ScrapDesign) msg);
+        else if (msg instanceof Messages.SetShipBuild)
+            handleCommand(conn, "setShipBuild", (Messages.SetShipBuild) msg);
+        else if (msg instanceof Messages.DesignCatalog)
+            handleDesignCatalog(conn);
         else
             send(conn, error("Unexpected message"));
     }
@@ -255,8 +270,20 @@ public class GameServer extends WebSocketServer {
                 err = applyColonyAllocations(emp, (Messages.SetColonyAllocations) cmd);
             else if (cmd instanceof Messages.SetTechAllocations)
                 err = applyTechAllocations(emp, (Messages.SetTechAllocations) cmd);
-            else
+            else if (cmd instanceof Messages.DeployFleet)
                 err = applyDeployFleet(emp, (Messages.DeployFleet) cmd);
+            else if (cmd instanceof Messages.SendTransports)
+                err = applySendTransports(emp, (Messages.SendTransports) cmd);
+            else if (cmd instanceof Messages.AbortTransports)
+                err = applyAbortTransports(emp, (Messages.AbortTransports) cmd);
+            else if (cmd instanceof Messages.Colonize)
+                err = applyColonize(emp, (Messages.Colonize) cmd);
+            else if (cmd instanceof Messages.CreateDesign)
+                err = applyCreateDesign(emp, (Messages.CreateDesign) cmd);
+            else if (cmd instanceof Messages.ScrapDesign)
+                err = applyScrapDesign(emp, (Messages.ScrapDesign) cmd);
+            else
+                err = applySetShipBuild(emp, (Messages.SetShipBuild) cmd);
         }
         send(conn, result(name, err == null, err == null ? "OK" : err));
         // successful orders change computed values (production, research);
@@ -342,6 +369,203 @@ public class GameServer extends WebSocketServer {
         if (!any)
             return "No ships selected";
         gal.ships.deploySubfleet(fleet, counts, cmd.destSystemId);
+        return null;
+    }
+
+    private String applySendTransports(Empire emp, Messages.SendTransports cmd) {
+        StarSystem from = galaxy().system(cmd.fromSystemId);
+        if ((from == null) || (from.empire() != emp) || !from.isColonized())
+            return "Not your colony";
+        Colony col = from.colony();
+        StarSystem dest = galaxy().system(cmd.destSystemId);
+        if (dest == null)
+            return "No such destination system";
+        if (cmd.destSystemId == cmd.fromSystemId)
+            return "Cannot transport to the same system";
+        if (!col.canTransport())
+            return "Colony cannot send transports (rebellion)";
+        if (!emp.canSendTransportsTo(dest))
+            return "Destination must be a colonized, scouted system in range (and habitable for your race)";
+        if (cmd.size <= 0)
+            return "Transport size must be positive";
+        if (cmd.size > col.maxTransportsAllowed())
+            return "At most half the population ("+col.maxTransportsAllowed()+") can be sent";
+        col.scheduleTransportsToSystem(dest, cmd.size);
+        return null;
+    }
+
+    private String applyAbortTransports(Empire emp, Messages.AbortTransports cmd) {
+        StarSystem from = galaxy().system(cmd.fromSystemId);
+        if ((from == null) || (from.empire() != emp) || !from.isColonized())
+            return "Not your colony";
+        from.colony().clearTransport();
+        return null;
+    }
+
+    private String applyColonize(Empire emp, Messages.Colonize cmd) {
+        StarSystem sys = galaxy().system(cmd.systemId);
+        if (sys == null)
+            return "No such system";
+        if (!emp.sv.isScouted(cmd.systemId))
+            return "System not scouted";
+        if (sys.isColonized())
+            return "System is already colonized";
+        ShipFleet fleet = galaxy().ships.orbitingFleet(emp.id, cmd.systemId);
+        if ((fleet == null) || !fleet.isActive())
+            return "No orbiting fleet at that system";
+        if (!fleet.canColonizeSystem(sys))
+            return "Fleet has no colony ship able to settle this planet";
+        fleet.colonizeSystem(sys);
+        return null;
+    }
+
+    private void handleDesignCatalog(WebSocket conn) {
+        Player p;
+        synchronized (this) {
+            p = players.get(conn);
+        }
+        if (p == null || !gameStarted) {
+            send(conn, error("Game not started"));
+            return;
+        }
+        Empire emp = galaxy().empire(p.empireId);
+        if (emp == null)
+            return;
+        Messages.DesignCatalog cat = new Messages.DesignCatalog();
+        synchronized (gameLock) {
+            ShipDesignLab lab = emp.shipLab();
+            cat.hulls = java.util.Arrays.asList("SMALL", "MEDIUM", "LARGE", "HUGE");
+            cat.computers = names(lab.computers());
+            cat.shields = names(lab.shields());
+            cat.ecms = names(lab.ecms());
+            cat.armors = names(lab.armors());
+            cat.engines = names(lab.engines());
+            cat.maneuvers = names(lab.maneuvers());
+            cat.weapons = names(lab.weapons());
+            cat.specials = names(lab.specials());
+        }
+        send(conn, Protocol.encode(cat));
+    }
+
+    private static java.util.List<String> names(java.util.List<? extends rotp.model.ships.ShipComponent> comps) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (rotp.model.ships.ShipComponent c : comps)
+            out.add(c.name());
+        return out;
+    }
+
+    private String applyCreateDesign(Empire emp, Messages.CreateDesign cmd) {
+        ShipDesignLab lab = emp.shipLab();
+        if ((cmd.slot < 0) || (cmd.slot >= ShipDesignLab.MAX_DESIGNS))
+            return "Design slot must be 0-"+(ShipDesignLab.MAX_DESIGNS-1);
+        ShipDesign slotDesign = lab.design(cmd.slot);
+        if (slotDesign.active())
+            return "Slot in use; scrap the existing design first";
+        if ((cmd.size < 0) || (cmd.size > ShipDesign.MAX_SIZE))
+            return "Hull size must be 0-"+ShipDesign.MAX_SIZE;
+
+        ShipDesign d = lab.newBlankDesign(cmd.size);
+        String err = setComponents(lab, d, cmd);
+        if (err != null)
+            return err;
+        if (d.availableSpace() < 0)
+            return "Design exceeds available space by "+(int) Math.ceil(-d.availableSpace());
+
+        slotDesign.copyFrom(d);
+        slotDesign.active(true);
+        slotDesign.name(((cmd.name == null) || cmd.name.trim().isEmpty()) ? null : cmd.name.trim());
+        if (slotDesign.name() == null)
+            lab.nameDesign(slotDesign);
+        slotDesign.setIconKey();
+        slotDesign.clearEmptyWeapons();
+        return null;
+    }
+
+    private String setComponents(ShipDesignLab lab, ShipDesign d, Messages.CreateDesign cmd) {
+        Integer idx;
+        if ((idx = find(lab.computers(), cmd.computer)) == null)  return "Unknown computer: "+cmd.computer;
+        d.computer(lab.computers().get(idx));
+        if ((idx = find(lab.shields(), cmd.shield)) == null)      return "Unknown shield: "+cmd.shield;
+        d.shield(lab.shields().get(idx));
+        if ((idx = find(lab.ecms(), cmd.ecm)) == null)            return "Unknown ECM: "+cmd.ecm;
+        d.ecm(lab.ecms().get(idx));
+        if ((idx = find(lab.armors(), cmd.armor)) == null)        return "Unknown armor: "+cmd.armor;
+        d.armor(lab.armors().get(idx));
+        if ((idx = find(lab.engines(), cmd.engine)) == null)      return "Unknown engine: "+cmd.engine;
+        d.engine(lab.engines().get(idx));
+        if ((idx = find(lab.maneuvers(), cmd.maneuver)) == null)  return "Unknown maneuver: "+cmd.maneuver;
+        d.maneuver(lab.maneuvers().get(idx));
+
+        if (cmd.weapons != null) {
+            if (cmd.weapons.length > ShipDesign.maxWeapons())
+                return "At most "+ShipDesign.maxWeapons()+" weapon types";
+            for (int i = 0; i < cmd.weapons.length; i++) {
+                if ((idx = find(lab.weapons(), cmd.weapons[i])) == null)
+                    return "Unknown weapon: "+cmd.weapons[i];
+                int count = ((cmd.weaponCounts != null) && (i < cmd.weaponCounts.length))
+                    ? cmd.weaponCounts[i] : 0;
+                if ((count < 0) || (count > 99))
+                    return "Weapon counts must be 0-99";
+                d.weapon(i, lab.weapons().get(idx), count);
+            }
+        }
+        if (cmd.specials != null) {
+            if (cmd.specials.length > ShipDesign.maxSpecials())
+                return "At most "+ShipDesign.maxSpecials()+" specials";
+            for (int i = 0; i < cmd.specials.length; i++) {
+                if ((idx = find(lab.specials(), cmd.specials[i])) == null)
+                    return "Unknown special: "+cmd.specials[i];
+                d.special(i, lab.specials().get(idx));
+            }
+        }
+        return null;
+    }
+
+    /** null/empty name selects index 0 (the "none"/basic component) */
+    private static Integer find(java.util.List<? extends rotp.model.ships.ShipComponent> comps, String name) {
+        if ((name == null) || name.isEmpty())
+            return 0;
+        for (int i = 0; i < comps.size(); i++) {
+            if (name.equalsIgnoreCase(comps.get(i).name()))
+                return i;
+        }
+        return null;
+    }
+
+    private String applyScrapDesign(Empire emp, Messages.ScrapDesign cmd) {
+        ShipDesignLab lab = emp.shipLab();
+        if ((cmd.slot < 0) || (cmd.slot >= ShipDesignLab.MAX_DESIGNS))
+            return "Design slot must be 0-"+(ShipDesignLab.MAX_DESIGNS-1);
+        ShipDesign d = lab.design(cmd.slot);
+        if (!d.active())
+            return "No active design in that slot";
+        if (activeDesignCount(lab) <= 1)
+            return "Cannot scrap your last design";
+        lab.scrapDesign(d);
+        return null;
+    }
+
+    private static int activeDesignCount(ShipDesignLab lab) {
+        int n = 0;
+        for (int i = 0; i < ShipDesignLab.MAX_DESIGNS; i++)
+            if (lab.design(i).active())
+                n++;
+        return n;
+    }
+
+    private String applySetShipBuild(Empire emp, Messages.SetShipBuild cmd) {
+        StarSystem sys = galaxy().system(cmd.systemId);
+        if ((sys == null) || (sys.empire() != emp) || !sys.isColonized())
+            return "Not your colony";
+        if ((cmd.designSlot < 0) || (cmd.designSlot >= ShipDesignLab.MAX_DESIGNS))
+            return "Design slot must be 0-"+(ShipDesignLab.MAX_DESIGNS-1);
+        ShipDesign d = emp.shipLab().design(cmd.designSlot);
+        if (!d.active())
+            return "No active design in that slot";
+        if (cmd.buildLimit < 0)
+            return "Build limit must be >= 0";
+        sys.colony().shipyard().design(d);
+        sys.colony().shipyard().buildLimit(cmd.buildLimit);
         return null;
     }
 

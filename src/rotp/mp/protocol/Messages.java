@@ -86,6 +86,68 @@ public final class Messages {
         public int[] counts;
     }
 
+    /** send population from one of your colonies to a colonized system in range */
+    public static class SendTransports {
+        public int fromSystemId;
+        public int destSystemId;
+        public int size;
+    }
+
+    /** cancel pending (unlaunched) transports at one of your colonies */
+    public static class AbortTransports {
+        public int fromSystemId;
+    }
+
+    /** colonize the system an orbiting fleet (with a colony ship) is at */
+    public static class Colonize {
+        public int systemId;
+    }
+
+    /**
+     * client -> server as an empty request; server replies with the lists
+     * filled in. Component names match this empire's researched tech; use
+     * them verbatim in CreateDesign. Index 0 of each list is "none"/basic.
+     */
+    public static class DesignCatalog {
+        public List<String> hulls;      // index = hull size id (0=small..3=huge)
+        public List<String> computers;
+        public List<String> shields;
+        public List<String> ecms;
+        public List<String> armors;
+        public List<String> engines;
+        public List<String> maneuvers;
+        public List<String> weapons;
+        public List<String> specials;
+    }
+
+    /** create a ship design in an empty slot; null component fields mean "none"/basic */
+    public static class CreateDesign {
+        public int slot;
+        public String name;
+        public int size;            // 0=small 1=medium 2=large 3=huge
+        public String computer;
+        public String shield;
+        public String ecm;
+        public String armor;
+        public String engine;
+        public String maneuver;
+        public String[] weapons;    // up to 4
+        public int[] weaponCounts;
+        public String[] specials;   // up to 3
+    }
+
+    /** scrap the design in a slot (removes its ships from all fleets, refunds reserve) */
+    public static class ScrapDesign {
+        public int slot;
+    }
+
+    /** set which design one of your colonies builds, and an optional build limit (0 = none) */
+    public static class SetShipBuild {
+        public int systemId;
+        public int designSlot;
+        public int buildLimit;
+    }
+
     /** server -> client: acknowledgement/rejection of an order */
     public static class CommandResult {
         public String command;

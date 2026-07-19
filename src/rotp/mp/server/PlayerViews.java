@@ -81,6 +81,7 @@ public final class PlayerViews {
         v.tech = techDto(emp.tech());
         v.fleets = fleetDtos(gal, emp);
         v.designs = designDtos(emp);
+        v.transports = transportDtos(gal, emp);
         return v;
     }
 
@@ -98,6 +99,10 @@ public final class PlayerViews {
         c.production = col.production();
         rotp.model.ships.Design d = col.shipyard().design();
         c.shipyardDesign = (d == null) ? null : d.name();
+        c.buildLimit = col.shipyard().buildLimit();
+        StarSystem dest = col.transportDestination();
+        c.transportSize = (int) col.inTransport();
+        c.transportDestId = (dest == null) ? -1 : dest.id;
         return c;
     }
 
@@ -141,7 +146,26 @@ public final class PlayerViews {
             PlayerView.DesignDto dto = new PlayerView.DesignDto();
             dto.slot = slot;
             dto.name = d.name();
+            dto.size = d.size();
+            dto.totalSpace = d.totalSpace();
+            dto.availableSpace = d.availableSpace();
+            dto.colonyShip = d.hasColonySpecial();
             out.add(dto);
+        }
+        return out;
+    }
+
+    private static java.util.List<PlayerView.TransportDto> transportDtos(Galaxy gal, Empire emp) {
+        java.util.List<PlayerView.TransportDto> out = new java.util.ArrayList<>();
+        for (rotp.model.galaxy.Transport tr : gal.transports()) {
+            if (tr.empId() != emp.id)
+                continue;
+            PlayerView.TransportDto t = new PlayerView.TransportDto();
+            t.destSystemId = tr.destSysId();
+            t.size = tr.size();
+            t.x = tr.x();
+            t.y = tr.y();
+            out.add(t);
         }
         return out;
     }

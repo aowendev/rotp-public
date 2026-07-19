@@ -46,6 +46,13 @@ public final class Protocol {
         register("setColonyAlloc", Messages.SetColonyAllocations.class);
         register("setTechAlloc",   Messages.SetTechAllocations.class);
         register("deployFleet",    Messages.DeployFleet.class);
+        register("sendTransports", Messages.SendTransports.class);
+        register("abortTransports",Messages.AbortTransports.class);
+        register("colonize",       Messages.Colonize.class);
+        register("designCatalog",  Messages.DesignCatalog.class);
+        register("createDesign",   Messages.CreateDesign.class);
+        register("scrapDesign",    Messages.ScrapDesign.class);
+        register("setShipBuild",   Messages.SetShipBuild.class);
         register("cmdResult",      Messages.CommandResult.class);
     }
 

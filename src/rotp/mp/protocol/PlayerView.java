@@ -42,6 +42,8 @@ public final class PlayerView {
     public List<SystemDto> systems = new ArrayList<>();
     /** this empire's fleets (visible foreign fleets come in a later phase) */
     public List<FleetDto> fleets = new ArrayList<>();
+    /** this empire's population transports in flight */
+    public List<TransportDto> transports = new ArrayList<>();
     /** this empire's active ship design slots */
     public List<DesignDto> designs = new ArrayList<>();
     public TechDto tech;
@@ -75,6 +77,9 @@ public final class PlayerView {
         public float bases;
         public float production;      // BC produced this turn
         public String shipyardDesign;
+        public int buildLimit;        // 0 = no limit
+        public int transportSize;     // pending (unlaunched) outgoing transports
+        public int transportDestId;   // -1 when none pending
     }
 
     /** research: 6 categories (computer/construction/forcefield/planetology/propulsion/weapon) */
@@ -95,5 +100,17 @@ public final class PlayerView {
     public static class DesignDto {
         public int slot;
         public String name;
+        public int size;             // 0=small..3=huge
+        public float totalSpace;
+        public float availableSpace;
+        public boolean colonyShip;
+    }
+
+    /** own population transports in flight */
+    public static class TransportDto {
+        public int destSystemId;
+        public int size;
+        public float x;
+        public float y;
     }
 }
