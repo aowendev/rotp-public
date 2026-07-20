@@ -65,14 +65,25 @@ Single-player ROTP conflates two questions in `isAIControlled()`. Multiplayer se
 | `createDesign` | C→S | New ship design in an empty slot; validated for hull space |
 | `scrapDesign` | C→S | Scrap a slot: removes its ships from all fleets, refunds reserve; last remaining design cannot be scrapped |
 | `setShipBuild` | C→S | Which design a colony builds + optional build limit |
+| `setSpySpending` | C→S | Spy spending vs contacted empire, 0–20 ticks |
+| `setSpyMission` | C→S | HIDE / ESPIONAGE / SABOTAGE vs contacted empire |
+| `setSecurity` | C→S | Empire-wide internal security, 0–10 ticks |
+| `diploOffer` | C→S | TRADE (level ≤ `maxTradeLevel`) / PEACE / PACT / ALLIANCE to contacted empire |
+| `breakTreaty` | C→S | Unilaterally break TRADE / PACT / ALLIANCE |
+| `declareWar` | C→S | Declare war; blocked while allied |
+| `diploReply` | S→C | Target's verdict on an offer (accepted flag + dialogue text) |
 | `cmdResult` | S→C | Accept/reject with reason |
 | `ready` | C→S | We-go ready flag |
 | `turnStatus` | S→C | Ready counts, resolution progress |
 | `error` | S→C | Version mismatch, game full, etc. |
 
-`PlayerView` contains: turn/year, galaxy dimensions, own empire identity, contacted empires, all systems (position always; name/type/owner once scouted), own-colony detail (allocations, locks, pop, factories, bases, production, shipyard design + build limit, pending transports), research state, own fleets, own in-flight transports, active design slots (name, hull size, total/available space, colony-ship flag).
+`PlayerView` contains: turn/year, galaxy dimensions, own empire identity + internal security, contacted empires (with per-contact diplomatic status — war/pact/alliance/peace, trade level and max offerable level — and spy-network state), all systems (position always; name/type/owner once scouted), own-colony detail (allocations, locks, pop, factories, bases, production, shipyard design + build limit, pending transports), research state, own fleets, own in-flight transports, active design slots (name, hull size, total/available space, colony-ship flag).
 
 Server-side command handling: rejected while a turn resolves; applied under a game lock; validated for ownership, bounds, range (`ShipFleet.canSendTo`, `Empire.canSendTransportsTo`), space (`ShipDesign.availableSpace`), and lock flags; successful orders return a fresh `PlayerView` to the sender.
+
+### Diplomacy semantics in v1
+
+Player-initiated diplomacy reuses the engine's `Diplomat.receive*` entry points — the same calls the desktop diplomacy UI makes: the server invokes `target.diplomatAI().receiveOfferTrade/Peace/Pact/Alliance(sender)` (or `receiveBreak*` / `receiveDeclareWar`) and relays the `DiplomaticReply` as a `diploReply` message. This holds even when the target is another human (v1 AI-assist); Phase 3 replaces the human-target path with async offer delivery during the order phase. Incoming AI-initiated diplomacy (their offers to us) is auto-answered by our own diplomat AI for now and becomes visible with per-empire notification delivery.
 
 ### Colonization semantics in v1
 
@@ -89,7 +100,7 @@ Scripted protocol clients (no GUI) drive end-to-end tests against a real headles
 ## 7. Phase plan and status
 
 - **Phase 0 — walking skeleton: done.** Maven build, protocol core, headless server, minimal DTO-rendered client, verified end-to-end.
-- **Phase 1 — playing the game: in progress.** Done: control split, we-go readiness, enriched `PlayerView`, and the full order set for economy and expansion — colony/tech allocations, fleet deployment, ship design lifecycle (catalog/create/scrap/set-build), colonization, and population transports, all verified by scripted end-to-end tests (24-check design/transport suite plus the two-player order/isolation suite). Remaining: spy/diplomacy commands; per-empire notification delivery; porting the real Swing screens to consume `PlayerView` (largest work item).
+- **Phase 1 — playing the game: in progress.** Done: control split, we-go readiness, enriched `PlayerView`, and the full player order set — colony/tech allocations, fleet deployment, ship design lifecycle (catalog/create/scrap/set-build), colonization, population transports, spy networks + internal security, and diplomacy (offers/treaty-breaking/war, answered by the target's diplomat AI). All verified by scripted end-to-end suites (two-player order/isolation, 24-check design/transport, 21-check spy/diplomacy). Remaining: per-empire notification delivery; porting the real Swing screens to consume `PlayerView` (largest work item).
 - **Phase 2 — LAN completeness:** reconnection, multiplayer save/load, lobby race/color picks.
 - **Phase 3 — optional interactivity:** remote prompts (tech/diplomacy/council) with turn timers; async player-to-player diplomacy in the order phase.
 - **Phase 4 — internet hosting:** persistent lobby, auth, deployment.

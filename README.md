@@ -67,6 +67,12 @@ Messages are JSON over WebSocket in a `{"t": <type>, "d": <payload>}` envelope; 
 | `createDesign` | client → server | Create a ship design in an empty slot from catalog component names; validated for hull space |
 | `scrapDesign` | client → server | Scrap a design slot (removes its ships everywhere, refunds reserve) |
 | `setShipBuild` | client → server | Choose which design a colony builds, with optional build limit |
+| `setSpySpending` / `setSpyMission` | client → server | Spy network vs a contacted empire: spending ticks and HIDE/ESPIONAGE/SABOTAGE |
+| `setSecurity` | client → server | Empire-wide internal security ticks |
+| `diploOffer` | client → server | Offer TRADE (with level), PEACE, PACT, or ALLIANCE to a contacted empire; the target's diplomat AI answers via `diploReply` |
+| `breakTreaty` | client → server | Unilaterally break TRADE, PACT, or ALLIANCE |
+| `declareWar` | client → server | Declare war (requires breaking an alliance first) |
+| `diploReply` | server → client | The target's verdict on a diplomatic offer, with dialogue text |
 | `cmdResult` | server → client | Accept/reject for an order, with reason ("Not your colony", "Destination out of range", …) |
 | `ready` | client → server | We-go ready flag; the turn resolves when all players are ready |
 | `turnStatus` | server → client | Ready counts and turn-resolution progress |
@@ -89,7 +95,8 @@ All orders are validated server-side against the sending player's empire; client
 - Done: `PlayerView` carries own-colony detail, research state, fleets, and ship design slots; every accepted order returns a fresh view.
 - Verified by a scripted two-player test: hostile/invalid orders rejected, orders survive turn resolution, deployed fleets move.
 - Done: the full expansion loop over the wire — ship design (catalog/create/scrap/set-build, space-validated), colonization (auto on arrival per v1 AI-assist, plus an explicit `colonize` command), and population transports (send/abort, delivery verified end-to-end).
-- Remaining: spying and diplomacy commands; per-empire notification delivery; porting the real game screens to the protocol.
+- Done: spy and diplomacy commands — spy spending/missions and internal security; diplomatic offers (trade/peace/pact/alliance) answered by the target's diplomat AI, treaty breaking, war declarations; contact status (treaties, trade levels, spy networks) in `PlayerView`.
+- Remaining: per-empire notification delivery; porting the real game screens to the protocol.
 
 **Roadmap:**
 1. **Phase 2 — full we-go multiplayer on LAN**: reconnection, saves/loads of multiplayer games, lobby polish (race/color picks).

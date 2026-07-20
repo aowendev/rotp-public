@@ -36,6 +36,7 @@ public final class PlayerView {
     public String empireName;
     public String raceName;
     public int colorId;
+    public int internalSecurity;   // empire-wide security ticks (0-10)
 
     /** empires this player has contacted (plus itself) */
     public List<EmpireDto> empires = new ArrayList<>();
@@ -53,6 +54,17 @@ public final class PlayerView {
         public String name;
         public String race;
         public int colorId;
+        // diplomatic/spy status vs this empire (all defaults for your own entry)
+        public boolean atWar;
+        public boolean pact;
+        public boolean alliance;
+        public boolean atPeace;      // active peace treaty
+        public int tradeLevel;       // 0 = no trade route
+        public int maxTradeLevel;    // largest offerable trade level right now
+        public int spySpending;      // 0-20 ticks
+        public String spyMission;    // HIDE / ESPIONAGE / SABOTAGE
+        public int spies;
+        public int maxSpies;
     }
 
     public static class SystemDto {

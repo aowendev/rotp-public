@@ -17,6 +17,7 @@ package rotp.mp.server;
 
 import rotp.model.colony.Colony;
 import rotp.model.empires.Empire;
+import rotp.model.empires.EmpireView;
 import rotp.model.galaxy.Galaxy;
 import rotp.model.galaxy.ShipFleet;
 import rotp.model.galaxy.StarSystem;
@@ -47,6 +48,7 @@ public final class PlayerViews {
         v.raceName = emp.raceName();
         v.colorId = emp.colorId();
 
+        v.internalSecurity = emp.internalSecurity();
         for (Empire e : gal.empires()) {
             if ((e != emp) && !emp.hasContact(e))
                 continue;
@@ -55,6 +57,20 @@ public final class PlayerViews {
             ed.name = e.name();
             ed.race = e.raceName();
             ed.colorId = e.colorId();
+            EmpireView ev = (e == emp) ? null : emp.viewForEmpire(e);
+            if (ev != null) {
+                ed.atWar = ev.embassy().anyWar();
+                ed.pact = ev.embassy().pact();
+                ed.alliance = ev.embassy().alliance();
+                ed.atPeace = ev.embassy().atPeace();
+                ed.tradeLevel = ev.trade().level();
+                ed.maxTradeLevel = ev.trade().maxLevel();
+                ed.spySpending = ev.spies().allocation();
+                ed.spyMission = ev.spies().isHide() ? "HIDE"
+                    : ev.spies().isEspionage() ? "ESPIONAGE" : "SABOTAGE";
+                ed.spies = ev.spies().numActiveSpies();
+                ed.maxSpies = ev.spies().maxSpies();
+            }
             v.empires.add(ed);
         }
 

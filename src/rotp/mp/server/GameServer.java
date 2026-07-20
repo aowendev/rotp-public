@@ -23,6 +23,7 @@ import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 import rotp.model.colony.Colony;
 import rotp.model.empires.Empire;
+import rotp.model.empires.EmpireView;
 import rotp.model.galaxy.Galaxy;
 import rotp.model.galaxy.ShipFleet;
 import rotp.model.galaxy.StarSystem;
@@ -35,6 +36,7 @@ import rotp.model.tech.TechCategory;
 import rotp.model.tech.TechTree;
 import rotp.mp.protocol.Messages;
 import rotp.mp.protocol.Protocol;
+import rotp.ui.diplomacy.DiplomaticReply;
 
 /**
  * Multiplayer server: we-go turns over an authoritative headless game.
@@ -129,6 +131,18 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "scrapDesign", (Messages.ScrapDesign) msg);
         else if (msg instanceof Messages.SetShipBuild)
             handleCommand(conn, "setShipBuild", (Messages.SetShipBuild) msg);
+        else if (msg instanceof Messages.SetSpySpending)
+            handleCommand(conn, "setSpySpending", (Messages.SetSpySpending) msg);
+        else if (msg instanceof Messages.SetSpyMission)
+            handleCommand(conn, "setSpyMission", (Messages.SetSpyMission) msg);
+        else if (msg instanceof Messages.SetSecurity)
+            handleCommand(conn, "setSecurity", (Messages.SetSecurity) msg);
+        else if (msg instanceof Messages.DiploOffer)
+            handleCommand(conn, "diploOffer", (Messages.DiploOffer) msg);
+        else if (msg instanceof Messages.BreakTreaty)
+            handleCommand(conn, "breakTreaty", (Messages.BreakTreaty) msg);
+        else if (msg instanceof Messages.DeclareWar)
+            handleCommand(conn, "declareWar", (Messages.DeclareWar) msg);
         else if (msg instanceof Messages.DesignCatalog)
             handleDesignCatalog(conn);
         else
@@ -282,8 +296,20 @@ public class GameServer extends WebSocketServer {
                 err = applyCreateDesign(emp, (Messages.CreateDesign) cmd);
             else if (cmd instanceof Messages.ScrapDesign)
                 err = applyScrapDesign(emp, (Messages.ScrapDesign) cmd);
-            else
+            else if (cmd instanceof Messages.SetShipBuild)
                 err = applySetShipBuild(emp, (Messages.SetShipBuild) cmd);
+            else if (cmd instanceof Messages.SetSpySpending)
+                err = applySetSpySpending(emp, (Messages.SetSpySpending) cmd);
+            else if (cmd instanceof Messages.SetSpyMission)
+                err = applySetSpyMission(emp, (Messages.SetSpyMission) cmd);
+            else if (cmd instanceof Messages.SetSecurity)
+                err = applySetSecurity(emp, (Messages.SetSecurity) cmd);
+            else if (cmd instanceof Messages.DiploOffer)
+                err = applyDiploOffer(conn, emp, (Messages.DiploOffer) cmd);
+            else if (cmd instanceof Messages.BreakTreaty)
+                err = applyBreakTreaty(emp, (Messages.BreakTreaty) cmd);
+            else
+                err = applyDeclareWar(emp, (Messages.DeclareWar) cmd);
         }
         send(conn, result(name, err == null, err == null ? "OK" : err));
         // successful orders change computed values (production, research);
@@ -566,6 +592,134 @@ public class GameServer extends WebSocketServer {
             return "Build limit must be >= 0";
         sys.colony().shipyard().design(d);
         sys.colony().shipyard().buildLimit(cmd.buildLimit);
+        return null;
+    }
+
+    /** resolves a contacted foreign empire's view, or null */
+    private EmpireView contactedView(Empire emp, int otherEmpireId) {
+        if (otherEmpireId == emp.id)
+            return null;
+        Empire other = galaxy().empire(otherEmpireId);
+        if ((other == null) || other.extinct())
+            return null;
+        EmpireView ev = emp.viewForEmpire(other);
+        if ((ev == null) || !ev.embassy().contact())
+            return null;
+        return ev;
+    }
+
+    private String applySetSpySpending(Empire emp, Messages.SetSpySpending cmd) {
+        EmpireView ev = contactedView(emp, cmd.empireId);
+        if (ev == null)
+            return "No contact with that empire";
+        if ((cmd.allocation < 0) || (cmd.allocation > 20))
+            return "Spy spending must be 0-20 ticks";
+        ev.spies().allocation(cmd.allocation);
+        return null;
+    }
+
+    private String applySetSpyMission(Empire emp, Messages.SetSpyMission cmd) {
+        EmpireView ev = contactedView(emp, cmd.empireId);
+        if (ev == null)
+            return "No contact with that empire";
+        String m = (cmd.mission == null) ? "" : cmd.mission.toUpperCase();
+        switch (m) {
+            case "HIDE":      ev.spies().beginHide(); return null;
+            case "ESPIONAGE": ev.spies().beginEspionage(); return null;
+            case "SABOTAGE":  ev.spies().beginSabotage(); return null;
+            default:          return "Mission must be HIDE, ESPIONAGE, or SABOTAGE";
+        }
+    }
+
+    private String applySetSecurity(Empire emp, Messages.SetSecurity cmd) {
+        if ((cmd.allocation < 0) || (cmd.allocation > 10))
+            return "Security must be 0-10 ticks";
+        emp.internalSecurity(cmd.allocation);
+        return null;
+    }
+
+    private String applyDiploOffer(WebSocket conn, Empire emp, Messages.DiploOffer cmd) {
+        EmpireView ev = contactedView(emp, cmd.empireId);
+        if (ev == null)
+            return "No contact with that empire";
+        Empire target = galaxy().empire(cmd.empireId);
+        String action = (cmd.action == null) ? "" : cmd.action.toUpperCase();
+        DiplomaticReply reply;
+        switch (action) {
+            case "TRADE":
+                if (ev.embassy().anyWar())
+                    return "Cannot trade while at war";
+                if ((cmd.tradeLevel <= 0) || (cmd.tradeLevel > ev.trade().maxLevel()))
+                    return "Trade level must be 1-"+ev.trade().maxLevel();
+                reply = target.diplomatAI().receiveOfferTrade(emp, cmd.tradeLevel);
+                break;
+            case "PEACE":
+                if (!ev.embassy().anyWar())
+                    return "Not at war";
+                reply = target.diplomatAI().receiveOfferPeace(emp);
+                break;
+            case "PACT":
+                if (ev.embassy().anyWar())
+                    return "Cannot propose a pact while at war";
+                if (ev.embassy().pact())
+                    return "Pact already in effect";
+                reply = target.diplomatAI().receiveOfferPact(emp);
+                break;
+            case "ALLIANCE":
+                if (ev.embassy().anyWar())
+                    return "Cannot propose an alliance while at war";
+                if (ev.embassy().alliance())
+                    return "Alliance already in effect";
+                reply = target.diplomatAI().receiveOfferAlliance(emp);
+                break;
+            default:
+                return "Action must be TRADE, PEACE, PACT, or ALLIANCE";
+        }
+        Messages.DiploReply dr = new Messages.DiploReply();
+        dr.empireId = cmd.empireId;
+        dr.action = action;
+        dr.accepted = (reply != null) && reply.accepted();
+        dr.text = (reply == null) ? "" : reply.text();
+        send(conn, Protocol.encode(dr));
+        return null;
+    }
+
+    private String applyBreakTreaty(Empire emp, Messages.BreakTreaty cmd) {
+        EmpireView ev = contactedView(emp, cmd.empireId);
+        if (ev == null)
+            return "No contact with that empire";
+        Empire target = galaxy().empire(cmd.empireId);
+        String treaty = (cmd.treaty == null) ? "" : cmd.treaty.toUpperCase();
+        switch (treaty) {
+            case "TRADE":
+                if (!ev.trade().active())
+                    return "No trade route to break";
+                target.diplomatAI().receiveBreakTrade(emp);
+                return null;
+            case "PACT":
+                if (!ev.embassy().pact())
+                    return "No pact to break";
+                target.diplomatAI().receiveBreakPact(emp);
+                return null;
+            case "ALLIANCE":
+                if (!ev.embassy().alliance())
+                    return "No alliance to break";
+                target.diplomatAI().receiveBreakAlliance(emp);
+                return null;
+            default:
+                return "Treaty must be TRADE, PACT, or ALLIANCE";
+        }
+    }
+
+    private String applyDeclareWar(Empire emp, Messages.DeclareWar cmd) {
+        EmpireView ev = contactedView(emp, cmd.empireId);
+        if (ev == null)
+            return "No contact with that empire";
+        if (ev.embassy().anyWar())
+            return "Already at war";
+        if (ev.embassy().alliance() || ev.embassy().unity())
+            return "Break the alliance before declaring war";
+        galaxy().empire(cmd.empireId).diplomatAI().receiveDeclareWar(emp);
         return null;
     }
 

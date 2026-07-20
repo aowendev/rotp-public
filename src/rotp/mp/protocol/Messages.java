@@ -148,6 +148,53 @@ public final class Messages {
         public int buildLimit;
     }
 
+    /** set spy spending against a contacted empire (0-20 ticks, each 0.5% of income) */
+    public static class SetSpySpending {
+        public int empireId;
+        public int allocation;
+    }
+
+    /** set spy mission against a contacted empire: HIDE, ESPIONAGE, or SABOTAGE */
+    public static class SetSpyMission {
+        public int empireId;
+        public String mission;
+    }
+
+    /** set empire-wide internal security (0-10 ticks) */
+    public static class SetSecurity {
+        public int allocation;
+    }
+
+    /**
+     * make a diplomatic offer to a contacted empire. In v1 the target's
+     * diplomat AI answers immediately (even for human empires); the verdict
+     * arrives as a diploReply. action: TRADE (with tradeLevel), PEACE,
+     * PACT, or ALLIANCE.
+     */
+    public static class DiploOffer {
+        public int empireId;
+        public String action;
+        public int tradeLevel;
+    }
+
+    /** unilaterally break an existing treaty: TRADE, PACT, or ALLIANCE */
+    public static class BreakTreaty {
+        public int empireId;
+        public String treaty;
+    }
+
+    public static class DeclareWar {
+        public int empireId;
+    }
+
+    /** server -> client: the target's answer to a diplomatic offer */
+    public static class DiploReply {
+        public int empireId;
+        public String action;
+        public boolean accepted;
+        public String text;
+    }
+
     /** server -> client: acknowledgement/rejection of an order */
     public static class CommandResult {
         public String command;

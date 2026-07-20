@@ -53,6 +53,13 @@ public final class Protocol {
         register("createDesign",   Messages.CreateDesign.class);
         register("scrapDesign",    Messages.ScrapDesign.class);
         register("setShipBuild",   Messages.SetShipBuild.class);
+        register("setSpySpending", Messages.SetSpySpending.class);
+        register("setSpyMission",  Messages.SetSpyMission.class);
+        register("setSecurity",    Messages.SetSecurity.class);
+        register("diploOffer",     Messages.DiploOffer.class);
+        register("breakTreaty",    Messages.BreakTreaty.class);
+        register("declareWar",     Messages.DeclareWar.class);
+        register("diploReply",     Messages.DiploReply.class);
         register("cmdResult",      Messages.CommandResult.class);
     }
 
