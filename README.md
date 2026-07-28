@@ -11,6 +11,8 @@ Download build: https://rayfowler.itch.io/remnants-of-the-precursors
 
 This fork adds online multiplayer to ROTP, developed on the `multiplayer` branch. The design splits the game into a headless, authoritative **server** that owns all game logic, and **clients** that speak a JSON-over-WebSocket protocol. The first client is the existing Java desktop app; because the protocol is language-neutral, it can eventually be replaced by a browser client (the RuneScape-style client/API split).
 
+Full design in [`docs/multiplayer-design.md`](docs/multiplayer-design.md); if you're picking the work back up, start with the [handoff note](docs/multiplayer-handoff.md).
+
 ## Architecture
 
 - **Server-authoritative**: the server runs the real `GameSession`/`Galaxy` model. Clients never hold trusted state.
@@ -25,8 +27,11 @@ Requires JDK 17+ and Maven:
 
 ```
 mvn compile          # compile
+mvn test             # run the multiplayer integration tests (~30s, headless)
 mvn package          # fat jar in target/ (large: embeds all game assets)
 ```
+
+The tests (`itest/rotp/mp/`) boot a real headless server in-process and drive it over the wire; see the design doc's Verification section.
 
 For development, run from the compiled classes instead of repackaging:
 

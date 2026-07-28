@@ -1,5 +1,9 @@
 # ROTP Online Multiplayer — Design Document
 
+> **Resuming this work?** Start with [`multiplayer-handoff.md`](multiplayer-handoff.md)
+> for current status, how to run things, and the next task. This document is the
+> design rationale behind it.
+
 ## 1. Goal and constraints
 
 Add online multiplayer to Remnants of the Precursors (a Java/Swing remake of Master of Orion) such that:
@@ -25,6 +29,7 @@ The earlier `web` branch (Tomcat/JSP scaffold with a stubbed engine bridge and s
 - `rotp.mp.protocol` — `Protocol` (envelope/registry), `Messages` (lobby, orders, status), `PlayerView` (+ nested DTOs). No dependencies on model or UI.
 - `rotp.mp.server` — `ServerMain` (headless bootstrap), `GameServer` (WebSocket lobby, command handling, turn driver), `PlayerViews` (DTO builder), `ServerUI` (headless `SessionUI`).
 - `rotp.mp.client` — `NetClient` (WebSocket), `ClientMain` + `GalaxyViewPanel` (minimal DTO-rendered client; real screens ported later).
+- `itest/rotp/mp` — JUnit integration tests + `MpTestSupport` harness. This is a separate `testSourceDirectory` because the main `sourceDirectory` is the whole `src` tree (so `src/test` would be built as main code) and `.gitignore` excludes any `test/` dir.
 
 One fat jar, three modes: no args = classic desktop; `--server port= players=`; `--client host= port= name=`.
 
@@ -95,7 +100,13 @@ Game state is mutated by exactly one thread at a time: command application and t
 
 ## 6. Verification approach
 
-Scripted protocol clients (no GUI) drive end-to-end tests against a real headless server: two players join, receive distinct fog-of-war views (no foreign colony detail leaks), issue orders, see hostile and malformed orders rejected, ready up, and confirm orders survive turn resolution and fleets move. Multi-turn soak tests check for headless UI leaks; a desktop launch check guards single-player regression. (These live as scratch scripts today; promoting them to committed integration tests is planned.)
+Committed JUnit 5 integration tests live under `itest/rotp/mp/` and run with **`mvn test`** (they are also the reason the pom sets `testSourceDirectory` to `itest` — see §2). Each test boots the real game engine headless in-process, stands up a `GameServer` on an ephemeral port, and drives it through a scripted WebSocket `Client` (shared infrastructure in `MpTestSupport`). They assert real behavior, not mocks:
+
+- `OrderCommandsTest` — two players in one game: fog-of-war isolation (no foreign colony detail leaks), colony/tech/fleet orders, ownership + bounds rejection, we-go readiness (one-ready does not advance), and orders surviving AI-driven turn resolution.
+- `ShipDesignTransportTest` — design catalog/create/scrap/set-build with space and slot validation; colonization; population transport schedule/abort/deliver.
+- `SpyDiplomacyTest` — internal security, spy spending/missions, and diplomatic offers/war/peace answered by the target's diplomat AI.
+
+Positive paths that depend on galaxy geography (reaching a colonizable planet, making first contact) use JUnit *assumptions*, so an unlucky galaxy seed **skips** those assertions rather than failing — the always-true mechanics (validation, rejection, persistence) are hard assertions. The whole suite runs in ~30s. The engine's RNG is unseeded (`Base.random`); seeding it for fully deterministic tests is a known future improvement.
 
 ## 7. Phase plan and status
 
