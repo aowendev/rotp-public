@@ -202,6 +202,23 @@ public final class Messages {
         public String text;
     }
 
+    /**
+     * server -> client: things that happened to this empire during the last
+     * turn, generated server-side per empire (see rotp.mp.server
+     * .NotificationCenter). Sent after each turn, before the fresh view.
+     */
+    public static class Notifications {
+        public int turn;
+        public List<Notification> items = new ArrayList<>();
+    }
+
+    public static class Notification {
+        public String category;   // CONTACT, DIPLOMACY, COLONY_GAINED, COLONY_LOST
+        public String text;       // human-readable, English for now
+        public int systemId = -1; // related system, -1 if n/a
+        public int empireId = -1; // related empire, -1 if n/a
+    }
+
     /** server -> client */
     public static class Error {
         public String text;

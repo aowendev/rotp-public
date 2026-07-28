@@ -61,6 +61,7 @@ public final class Protocol {
         register("declareWar",     Messages.DeclareWar.class);
         register("diploReply",     Messages.DiploReply.class);
         register("cmdResult",      Messages.CommandResult.class);
+        register("notifications",  Messages.Notifications.class);
     }
 
     private Protocol() { }

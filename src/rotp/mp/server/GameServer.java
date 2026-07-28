@@ -17,6 +17,7 @@ package rotp.mp.server;
 
 import java.net.InetSocketAddress;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
@@ -52,9 +53,12 @@ import rotp.ui.diplomacy.DiplomaticReply;
  */
 public class GameServer extends WebSocketServer {
     private final int humanSlots;
+    /** IGameOptions.SIZE_* for the galaxy, or null to keep the ruleset default */
+    private final String galaxySize;
     private final Map<WebSocket, Player> players = new LinkedHashMap<>();
     /** serializes all game-state access (commands vs turn processing) */
     private final Object gameLock = new Object();
+    private final NotificationCenter notiCenter = new NotificationCenter();
     private volatile boolean gameStarted = false;
     private volatile boolean turnRunning = false;
 
@@ -65,8 +69,13 @@ public class GameServer extends WebSocketServer {
     }
 
     public GameServer(int port, int humanSlots) {
+        this(port, humanSlots, null);
+    }
+
+    public GameServer(int port, int humanSlots, String galaxySize) {
         super(new InetSocketAddress(port));
         this.humanSlots = humanSlots;
+        this.galaxySize = galaxySize;
         setReuseAddr(true);
     }
 
@@ -180,6 +189,8 @@ public class GameServer extends WebSocketServer {
         MOO1GameOptions options = new MOO1GameOptions();
         // interactive mid-turn events auto-resolve via each empire's AI
         options.selectedAutoplayOption(IGameOptions.AUTOPLAY_AI_BASE);
+        if (galaxySize != null)
+            options.selectedGalaxySize(galaxySize);
         if (options.selectedNumberOpponents() < humanSlots-1)
             options.selectedNumberOpponents(humanSlots-1);
         GameSession.instance().startGame(options);
@@ -187,8 +198,11 @@ public class GameServer extends WebSocketServer {
         synchronized (this) {
             for (Player p : players.values()) {
                 Empire emp = galaxy().empire(p.empireId);
-                if (emp != null)
+                if (emp != null) {
                     emp.makeRemoteHuman();
+                    // baseline so turn-1 state isn't reported as "news"
+                    synchronized (gameLock) { notiCenter.seed(emp); }
+                }
             }
         }
         gameStarted = true;
@@ -250,6 +264,7 @@ public class GameServer extends WebSocketServer {
                 for (Player p : players.values())
                     p.ready = false;
             }
+            broadcastNotifications();
             broadcastViews();
             broadcastTurnStatus("Awaiting orders");
         }
@@ -724,6 +739,27 @@ public class GameServer extends WebSocketServer {
     }
 
     // ---- outbound ----
+
+    /** per-empire notifications for what changed this turn, sent before the fresh view */
+    private void broadcastNotifications() {
+        synchronized (this) {
+            for (Map.Entry<WebSocket, Player> e : players.entrySet()) {
+                Empire emp = galaxy().empire(e.getValue().empireId);
+                if (emp == null)
+                    continue;
+                List<Messages.Notification> items;
+                synchronized (gameLock) {
+                    items = notiCenter.update(emp);
+                }
+                if (items.isEmpty())
+                    continue;
+                Messages.Notifications msg = new Messages.Notifications();
+                msg.turn = galaxy().currentTurn();
+                msg.items = items;
+                send(e.getKey(), Protocol.encode(msg));
+            }
+        }
+    }
 
     private void broadcastViews() {
         synchronized (this) {

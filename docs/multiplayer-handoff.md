@@ -5,16 +5,16 @@ how to run what exists, and exactly what to do next. The full design rationale i
 in [`multiplayer-design.md`](multiplayer-design.md); this is the operational
 "pick up here" note.
 
-_Last updated: 2026-07-28, end of Phase 1 order-command work._
+_Last updated: 2026-07-28, after per-empire notification delivery._
 
 ## Where we are
 
-Branch **`multiplayer`** (off `master`). Phases 0 and the order-command portion of
-Phase 1 are done and committed. The game is fully playable **at the protocol level**:
-a headless server runs the real game, and clients drive every economic, military,
-expansion, spy, and diplomatic decision over JSON/WebSocket. What's missing is
-player-visible *output* (notifications) and a real UI (the Java client is still a
-minimal galaxy-map stub).
+Branch **`multiplayer`** (off `master`). Phase 0 and most of Phase 1 are done and committed. The game is fully playable
+**at the protocol level**: a headless server runs the real game, clients drive
+every economic, military, expansion, spy, and diplomatic decision over
+JSON/WebSocket, and each player receives per-empire notifications of what
+happened each turn. What's missing is a real UI (the Java client is still a
+minimal galaxy-map stub) and broader notification coverage.
 
 Commits so far: `Phase 0`, `Phase I part 1`, `Phase 1 part 2`, `Phae 1 part 3`
 (plus this test/handoff commit).
@@ -30,7 +30,7 @@ mvn test
 
 # play a local game: one server, then N clients
 mvn dependency:build-classpath -Dmdep.outputFile=cp.txt
-java -cp "target/classes:$(cat cp.txt)" rotp.Rotp --server port=8777 players=2
+java -cp "target/classes:$(cat cp.txt)" rotp.Rotp --server port=8777 players=2 size=small
 java -cp "target/classes:$(cat cp.txt)" rotp.Rotp --client host=localhost port=8777 name=Alice
 
 # classic offline single-player still works, unchanged
@@ -51,26 +51,17 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   AI auto-resolves mid-turn prompts for everyone, but never overwrites a remote
   human's strategic orders. **This is the single most important invariant — when
   adding AI decision code, gate it on `decidedByAI()`, not `isAIControlled()`.**
+- **Per-empire notifications**: the server generates each player's turn events
+  itself (`rotp.mp.server.NotificationCenter`) by diffing that empire's state,
+  rather than reusing ROTP's single-player notification classes. v1 covers first
+  contact, diplomatic status changes, and colonies gained/lost.
 - Verified by `itest/rotp/mp/` (4 tests): order/isolation, design/transport,
-  spy/diplomacy.
+  spy/diplomacy (the last two also assert notification delivery).
 
 ## Do this next (in order)
 
-1. **Per-empire notification delivery.** *This is the recommended next task —
-   server-side, well-scoped, and it makes the game observable before the UI port.*
-   - Today `ServerUI` (`rotp.mp.server.ServerUI`) collects `TurnNotification`s
-     into one list during turn resolution, but they are never routed to clients.
-   - The single-player notification queue in `GameSession` is global (one human).
-     For multiplayer, notifications must be attributed to an empire and delivered
-     to that empire's client as a new `notifications` protocol message
-     (list of {kind, text, systemId?, empireId?}). See design doc §3.1 / §4.
-   - Investigate whether each `TurnNotification` can report its target empire; if
-     not uniformly, start with the ones that already carry an empire/colony
-     (spy reports, GNN, ship-construction, combat results) and route those.
-   - Add a scripted assertion to a new/[existing] test: a spy or combat event
-     produces a notification delivered to the right player and not others.
-
-2. **Port the real Swing screens to the protocol** (largest remaining item).
+1. **Port the real Swing screens to the protocol** (largest remaining item, and
+   the thing standing between "playable at the protocol level" and "playable").
    Replace direct-model reads in the main/colony/fleet/tech/design/races screens
    with `PlayerView` DTOs, and wire their buttons to protocol commands instead of
    direct model mutation. The DTO/command surface built in Phase 1 is designed to
@@ -79,6 +70,12 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
    single-player path working (the same panels still run against a local
    `GameSession` — consider a client-side view provider so panels don't care
    whether data came from the model or the wire).
+
+2. **Extend notification coverage.** `NotificationCenter` currently diffs owned
+   systems + contacts + treaty flags. Add snapshot fields + diff cases for
+   tech completed, combat outcomes, spy reports, and GNN news. Note the one
+   known gap: an empire met *via* a simultaneous war declaration reports only
+   `CONTACT`, not the war (the war is still in `EmpireDto.atWar`).
 
 Then Phase 2+ (reconnection, MP save/load, lobby race/color picks), Phase 3
 (interactive mid-turn prompts with turn timers), Phase 4 (internet hosting),
@@ -112,7 +109,8 @@ Phase 5 (browser client). See design doc §7.
 
 - `src/rotp/mp/protocol/` — `Protocol` (envelope/registry), `Messages`, `PlayerView`.
 - `src/rotp/mp/server/` — `ServerMain`, `GameServer` (lobby + commands + turn driver),
-  `PlayerViews` (DTO builder), `ServerUI` (headless `SessionUI`).
+  `PlayerViews` (DTO builder), `NotificationCenter` (per-empire event diffing),
+  `ServerUI` (headless `SessionUI`).
 - `src/rotp/mp/client/` — `NetClient`, `ClientMain`, `GalaxyViewPanel` (stub UI).
 - `itest/rotp/mp/` — integration tests + `MpTestSupport` harness.
 - Engine seams: `rotp.model.game.SessionUI`; `Empire.decidedByAI/isRemoteHuman`;

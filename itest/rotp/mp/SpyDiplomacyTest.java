@@ -72,20 +72,22 @@ public class SpyDiplomacyTest {
         offerUnknown.action = "PACT";
         assertFalse(alice.order(offerUnknown).ok, "offer to unknown empire rejected");
 
-        // scout outward to hasten first contact
+        // actively scout outward until we make first contact
         PlayerView.SystemDto home = MpTestSupport.ownColony(v);
-        Messages.DeployFleet df = new Messages.DeployFleet();
-        df.fromSystemId = home.id;
-        df.destSystemId = MpTestSupport.nearestOthers(v, home).get(0).id;
-        alice.order(df);
-
+        java.util.Set<Integer> visited = new java.util.HashSet<>();
+        visited.add(home.id);
         int otherId = -1;
-        for (int t = 0; t < 80 && otherId < 0; t++) {
+        boolean sawContactNote = false;
+        for (int t = 0; t < 120 && otherId < 0; t++) {
+            v = MpTestSupport.explore(alice, v, visited);
             v = alice.ready();
+            if (MpTestSupport.sawNotification(alice, "CONTACT"))
+                sawContactNote = true;
             PlayerView.EmpireDto o = MpTestSupport.anyForeignEmpire(v);
             if (o != null) otherId = o.id;
         }
-        assumeTrue(otherId >= 0, "no first contact within 80 turns this game; skipping spy/diplomacy round-trips");
+        assumeTrue(otherId >= 0, "no first contact within 120 turns this game; skipping spy/diplomacy round-trips");
+        assertTrue(sawContactNote, "first contact delivered as a CONTACT notification");
 
         // spy network vs the contacted empire
         Messages.SetSpySpending ss = new Messages.SetSpySpending();
@@ -129,6 +131,12 @@ public class SpyDiplomacyTest {
         assertTrue(alice.order(dw).ok, "war declared");
         assertTrue(MpTestSupport.empire(alice.lastView, otherId).atWar, "war state reflected in view");
         assertFalse(alice.order(dw).ok, "duplicate war declaration rejected");
+
+        // the new war becomes news on the next turn
+        MpTestSupport.drain(alice.notifications);
+        alice.ready();
+        assertTrue(MpTestSupport.sawNotification(alice, "DIPLOMACY"),
+            "war onset delivered as a DIPLOMACY notification");
 
         Messages.DiploOffer pactAtWar = new Messages.DiploOffer();
         pactAtWar.empireId = otherId;

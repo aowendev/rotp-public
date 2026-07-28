@@ -31,7 +31,7 @@ The earlier `web` branch (Tomcat/JSP scaffold with a stubbed engine bridge and s
 - `rotp.mp.client` — `NetClient` (WebSocket), `ClientMain` + `GalaxyViewPanel` (minimal DTO-rendered client; real screens ported later).
 - `itest/rotp/mp` — JUnit integration tests + `MpTestSupport` harness. This is a separate `testSourceDirectory` because the main `sourceDirectory` is the whole `src` tree (so `src/test` would be built as main code) and `.gitignore` excludes any `test/` dir.
 
-One fat jar, three modes: no args = classic desktop; `--server port= players=`; `--client host= port= name=`.
+One fat jar, three modes: no args = classic desktop; `--server port= players= [size=tiny|small|medium|large|huge]`; `--client host= port= name=`.
 
 ## 3. The two key engine refactors
 
@@ -78,6 +78,7 @@ Single-player ROTP conflates two questions in `isAIControlled()`. Multiplayer se
 | `declareWar` | C→S | Declare war; blocked while allied |
 | `diploReply` | S→C | Target's verdict on an offer (accepted flag + dialogue text) |
 | `cmdResult` | S→C | Accept/reject with reason |
+| `notifications` | S→C | Per-empire events from the last turn (list of {category, text, systemId?, empireId?}) |
 | `ready` | C→S | We-go ready flag |
 | `turnStatus` | S→C | Ready counts, resolution progress |
 | `error` | S→C | Version mismatch, game full, etc. |
@@ -85,6 +86,12 @@ Single-player ROTP conflates two questions in `isAIControlled()`. Multiplayer se
 `PlayerView` contains: turn/year, galaxy dimensions, own empire identity + internal security, contacted empires (with per-contact diplomatic status — war/pact/alliance/peace, trade level and max offerable level — and spy-network state), all systems (position always; name/type/owner once scouted), own-colony detail (allocations, locks, pop, factories, bases, production, shipyard design + build limit, pending transports), research state, own fleets, own in-flight transports, active design slots (name, hull size, total/available space, colony-ship flag).
 
 Server-side command handling: rejected while a turn resolves; applied under a game lock; validated for ownership, bounds, range (`ShipFleet.canSendTo`, `Empire.canSendTransportsTo`), space (`ShipDesign.availableSpace`), and lock flags; successful orders return a fresh `PlayerView` to the sender.
+
+### Notifications (per-empire, server-generated)
+
+ROTP's built-in notifications cannot be reused for multiplayer: every one is written from the single local `player()`'s fog-of-war perspective (`player().sv.name(...)`, `player().knowsOf(...)`) and creation is gated on `isPlayerControlled()` across ~150 sites — which is false for *every* empire on the autoplay server, so almost nothing is generated and there is no empire attribution. Retrofitting all of that (much of it interactive-prompt code we deliberately auto-resolve) would be a very large refactor.
+
+Instead the server **generates each empire's notifications itself** (`rotp.mp.server.NotificationCenter`), the same philosophy as `PlayerView`: it keeps a per-empire snapshot (owned systems, contacted empires, per-contact treaty flags) and diffs it after every turn, emitting a `notifications` message to that player before the fresh view. v1 covers the unambiguous, high-signal events — first contact, diplomatic status transitions (war/peace/pact/alliance onset and treaty breaks), and colonies gained or lost. Text is generated server-side (English for now); each item also carries `systemId`/`empireId` so a client can localize or link. Snapshots are seeded at game start so turn-1 state isn't reported as news. Extending to tech-completed, combat outcomes, spy reports, and GNN news is a matter of adding fields to the snapshot and cases to the diff. (One v1 limitation: an empire encountered *via* a simultaneous war declaration reports only `CONTACT`, not the war — the war is still visible in the view's `EmpireDto.atWar`.)
 
 ### Diplomacy semantics in v1
 
@@ -104,14 +111,14 @@ Committed JUnit 5 integration tests live under `itest/rotp/mp/` and run with **`
 
 - `OrderCommandsTest` — two players in one game: fog-of-war isolation (no foreign colony detail leaks), colony/tech/fleet orders, ownership + bounds rejection, we-go readiness (one-ready does not advance), and orders surviving AI-driven turn resolution.
 - `ShipDesignTransportTest` — design catalog/create/scrap/set-build with space and slot validation; colonization; population transport schedule/abort/deliver.
-- `SpyDiplomacyTest` — internal security, spy spending/missions, and diplomatic offers/war/peace answered by the target's diplomat AI.
+- `SpyDiplomacyTest` — internal security, spy spending/missions, and diplomatic offers/war/peace answered by the target's diplomat AI. Also asserts per-empire notifications: first contact → `CONTACT`, declaring war → `DIPLOMACY`; `ShipDesignTransportTest` asserts colonization → `COLONY_GAINED`.
 
-Positive paths that depend on galaxy geography (reaching a colonizable planet, making first contact) use JUnit *assumptions*, so an unlucky galaxy seed **skips** those assertions rather than failing — the always-true mechanics (validation, rejection, persistence) are hard assertions. The whole suite runs in ~30s. The engine's RNG is unseeded (`Base.random`); seeding it for fully deterministic tests is a known future improvement.
+Positive paths that depend on galaxy geography (reaching a colonizable planet, making first contact) use JUnit *assumptions*, so an unlucky galaxy seed **skips** those assertions rather than failing — the always-true mechanics (validation, rejection, persistence) are hard assertions. Tests run on a **tiny galaxy** (`startServer` passes `SIZE_TINY`) so empires start close and first contact is reliable — a remote human's fleets don't auto-explore, so the tests drive scouting themselves (`MpTestSupport.explore`). The whole suite runs in ~20s. The engine's RNG is unseeded (`Base.random`); seeding it for fully deterministic tests is a known future improvement.
 
 ## 7. Phase plan and status
 
 - **Phase 0 — walking skeleton: done.** Maven build, protocol core, headless server, minimal DTO-rendered client, verified end-to-end.
-- **Phase 1 — playing the game: in progress.** Done: control split, we-go readiness, enriched `PlayerView`, and the full player order set — colony/tech allocations, fleet deployment, ship design lifecycle (catalog/create/scrap/set-build), colonization, population transports, spy networks + internal security, and diplomacy (offers/treaty-breaking/war, answered by the target's diplomat AI). All verified by scripted end-to-end suites (two-player order/isolation, 24-check design/transport, 21-check spy/diplomacy). Remaining: per-empire notification delivery; porting the real Swing screens to consume `PlayerView` (largest work item).
+- **Phase 1 — playing the game: in progress.** Done: control split, we-go readiness, enriched `PlayerView`, the full player order set — colony/tech allocations, fleet deployment, ship design lifecycle (catalog/create/scrap/set-build), colonization, population transports, spy networks + internal security, and diplomacy (offers/treaty-breaking/war, answered by the target's diplomat AI) — and per-empire notification delivery (contact/diplomacy/colony events, server-generated). All verified by committed JUnit integration tests. Remaining: porting the real Swing screens to consume `PlayerView` (largest work item), and extending notification coverage (tech/combat/spy/GNN).
 - **Phase 2 — LAN completeness:** reconnection, multiplayer save/load, lobby race/color picks.
 - **Phase 3 — optional interactivity:** remote prompts (tech/diplomacy/council) with turn timers; async player-to-player diplomacy in the order phase.
 - **Phase 4 — internet hosting:** persistent lobby, auth, deployment.

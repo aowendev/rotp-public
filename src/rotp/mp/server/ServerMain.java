@@ -32,6 +32,7 @@ public class ServerMain {
 
         int port = intArg(args, "port", DEFAULT_PORT);
         int players = intArg(args, "players", 2);
+        String size = galaxySize(stringArg(args, "size", null));
 
         // must be registered before anything touches the game session,
         // otherwise the default SessionUI would load the Swing UI
@@ -43,8 +44,24 @@ public class ServerMain {
         TechLibrary.current();
         LanguageManager.current().selectedLanguageName();
 
-        GameServer server = new GameServer(port, players);
+        GameServer server = new GameServer(port, players, size);
         server.run();  // blocks
+    }
+
+    /** map a friendly size token (tiny/small/medium/large/huge) to an IGameOptions constant */
+    static String galaxySize(String token) {
+        if (token == null)
+            return null;
+        switch (token.toLowerCase()) {
+            case "tiny":   return rotp.model.game.IGameOptions.SIZE_TINY;
+            case "small":  return rotp.model.game.IGameOptions.SIZE_SMALL;
+            case "medium": return rotp.model.game.IGameOptions.SIZE_MEDIUM;
+            case "large":  return rotp.model.game.IGameOptions.SIZE_LARGE;
+            case "huge":   return rotp.model.game.IGameOptions.SIZE_HUGE;
+            default:
+                System.out.println("Unknown galaxy size '"+token+"', using ruleset default");
+                return null;
+        }
     }
 
     public static int intArg(String[] args, String key, int defaultValue) {

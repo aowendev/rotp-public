@@ -105,6 +105,14 @@ public class ClientMain {
             if (!cr.ok)
                 status.setText("Order rejected ("+cr.command+"): "+cr.text);
         }
+        else if (msg instanceof Messages.Notifications) {
+            Messages.Notifications ns = (Messages.Notifications) msg;
+            for (Messages.Notification n : ns.items)
+                System.out.println("[turn "+ns.turn+"] "+n.category+": "+n.text);
+            if (!ns.items.isEmpty())
+                status.setText(ns.items.size()+" event(s) this turn: "+ns.items.get(0).text
+                    + (ns.items.size() > 1 ? " (+"+(ns.items.size()-1)+" more)" : ""));
+        }
         else if (msg instanceof Messages.Error) {
             status.setText("Server error: "+((Messages.Error) msg).text);
         }

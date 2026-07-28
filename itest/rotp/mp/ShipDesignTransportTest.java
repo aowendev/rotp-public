@@ -162,6 +162,8 @@ public class ShipDesignTransportTest {
         // expand: deploy the colony ship; under v1 AI-assist it auto-colonizes on arrival
         int newColony = tryColonize(home, colonySlot);
         assumeTrue(newColony >= 0, "no colonizable system reachable this game; skipping transport delivery");
+        assertTrue(MpTestSupport.sawNotification(alice, "COLONY_GAINED"),
+            "gaining a colony delivered as a COLONY_GAINED notification");
 
         v = alice.latestView();
         Messages.SendTransports st = new Messages.SendTransports();

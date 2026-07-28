@@ -75,7 +75,9 @@ public final class MpTestSupport {
     public static Server startServer(int humanSlots) {
         bootEngine();
         int port = freePort();
-        GameServer server = new GameServer(port, humanSlots);
+        // a tiny galaxy keeps empires close so tests reliably reach first
+        // contact (a remote human's fleets don't auto-explore) and run fast
+        GameServer server = new GameServer(port, humanSlots, rotp.model.game.IGameOptions.SIZE_TINY);
         server.start();  // non-blocking (WebSocketServer)
         return new Server(server, port);
     }
@@ -102,6 +104,7 @@ public final class MpTestSupport {
         public final BlockingQueue<Messages.DesignCatalog> catalogs = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.Lobby> lobbies = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.GameStarted> starts = new LinkedBlockingQueue<>();
+        public final BlockingQueue<Messages.Notifications> notifications = new LinkedBlockingQueue<>();
 
         private final WebSocketClient ws;
         public volatile PlayerView lastView;
@@ -123,6 +126,7 @@ public final class MpTestSupport {
                     else if (msg instanceof Messages.DesignCatalog) catalogs.offer((Messages.DesignCatalog) msg);
                     else if (msg instanceof Messages.Lobby) lobbies.offer((Messages.Lobby) msg);
                     else if (msg instanceof Messages.GameStarted) starts.offer((Messages.GameStarted) msg);
+                    else if (msg instanceof Messages.Notifications) notifications.offer((Messages.Notifications) msg);
                     else if (msg instanceof Messages.Error) System.out.println("["+Client.this.name+"] server error: "+((Messages.Error) msg).text);
                 }
                 @Override public void onClose(int code, String reason, boolean remote) { }
@@ -222,5 +226,53 @@ public final class MpTestSupport {
     public static float dist2(PlayerView.SystemDto s, PlayerView.SystemDto o) {
         float dx = s.x - o.x, dy = s.y - o.y;
         return dx*dx + dy*dy;
+    }
+
+    /**
+     * Keep this empire's fleets exploring: send every idle orbiting fleet
+     * onward to the nearest not-yet-visited system in range. Since a remote
+     * human's fleets don't auto-explore (the AI is off), tests must drive
+     * scouting themselves to reach neighbours and make first contact.
+     * Returns the (possibly updated) latest view.
+     */
+    public static PlayerView explore(Client c, PlayerView v, java.util.Set<Integer> visited) throws Exception {
+        for (PlayerView.FleetDto f : new java.util.ArrayList<>(v.fleets)) {
+            if (f.atSystemId < 0)
+                continue;
+            visited.add(f.atSystemId);
+            for (PlayerView.SystemDto cand : nearestOthers(v, systemOrSelf(v, f.atSystemId))) {
+                if (visited.contains(cand.id))
+                    continue;
+                rotp.mp.protocol.Messages.DeployFleet d = new rotp.mp.protocol.Messages.DeployFleet();
+                d.fromSystemId = f.atSystemId;
+                d.destSystemId = cand.id;
+                if (c.order(d).ok) { visited.add(cand.id); break; }
+            }
+        }
+        return c.latestView();
+    }
+
+    private static PlayerView.SystemDto systemOrSelf(PlayerView v, int id) {
+        PlayerView.SystemDto s = system(v, id);
+        if (s != null)
+            return s;
+        PlayerView.SystemDto stub = new PlayerView.SystemDto();
+        stub.id = id;
+        return stub;
+    }
+
+    public static <T> java.util.List<T> drain(BlockingQueue<T> q) {
+        java.util.List<T> out = new java.util.ArrayList<>();
+        q.drainTo(out);
+        return out;
+    }
+
+    /** true if any drained Notifications message carries an item of the given category */
+    public static boolean sawNotification(Client c, String category) {
+        for (Messages.Notifications ns : drain(c.notifications))
+            for (Messages.Notification n : ns.items)
+                if (category.equals(n.category))
+                    return true;
+        return false;
     }
 }
