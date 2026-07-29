@@ -69,11 +69,14 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   and acts via commands — **no game model on the client**. Settled architecture
   (design doc "Client rendering"): reusing ROTP's real Swing panels was rejected
   because a browser can use none of it.
-- Verified by `itest/rotp/mp/` (21 tests): order/isolation, design/transport,
+- `ColonyPanel` also chooses which design the colony builds (`setShipBuild`): a
+  design dropdown (from `PlayerView.designs`) + build limit + Set button, so a
+  newly created design is no longer inert.
+- Verified by `itest/rotp/mp/` (22 tests): order/isolation, design/transport,
   spy/diplomacy (also assert notification delivery), and the colony / research /
   fleets / ship-design screens (redistribution, DTO load, map click hit-test,
-  fleet summarization/deployability, free-slot computation, catalog request, and
-  the server equalizing research to sum-60 at start).
+  build-option load, fleet summarization/deployability, free-slot computation,
+  catalog request, and the server equalizing research to sum-60 at start).
 
 ## Do this next (in order)
 
@@ -83,11 +86,10 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
    ⌘-shortcut).
    - **Empire/status overview** (Planet List ⌘P): colonies, totals,
      contact/diplomacy from `EmpireDto` — mostly read-only, a good next screen.
-   - **Surface `setShipBuild`** (choose which design a colony builds + build limit)
-     in `ColonyPanel` — without it, a newly created design is inert (colonies keep
-     their default). Add a design dropdown + limit to the colony screen.
    - Fleets/transports polish: per-design partial deploys (currently whole-fleet
      only) and map-click destination selection (currently a dropdown).
+   The full economy→build→expand loop is now clickable end-to-end: research →
+   design a ship → set a colony to build it (with ship spending) → deploy fleets.
    Keep pure rendering-independent logic in small non-Swing classes (browser
    blueprint + unit-testable), and add a `ColonyScreenTest`-style test per screen.
    Note: the desktop **single-player** game is untouched by this work — it still

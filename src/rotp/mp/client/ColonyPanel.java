@@ -16,20 +16,24 @@
 package rotp.mp.client;
 
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.util.List;
 import java.util.function.Consumer;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSlider;
+import javax.swing.JSpinner;
+import javax.swing.SpinnerNumberModel;
 
 import rotp.mp.protocol.Messages;
 import rotp.mp.protocol.PlayerView;
@@ -60,10 +64,16 @@ public class ColonyPanel extends JPanel {
     private final JLabel totalLabel = new JLabel(" ");
     private final JButton apply = new JButton("Apply spending");
 
+    // which design this colony builds (setShipBuild)
+    private final JComboBox<DesignItem> buildCombo = new JComboBox<>();
+    private final JSpinner buildLimit = new JSpinner(new SpinnerNumberModel(0, 0, 999, 1));
+    private final JButton setBuildBtn = new JButton("Set build");
+
     private int systemId = -1;
     private boolean[] locked = new boolean[5];
+    private List<PlayerView.DesignDto> designs;   // empire designs, for the build dropdown
     private boolean adjusting = false;   // guards programmatic slider writes
-    private boolean dirty = false;       // unsent local edits
+    private boolean dirty = false;       // unsent spending edits
 
     public ColonyPanel(Consumer<Object> orderSender) {
         this.orderSender = orderSender;
@@ -106,6 +116,20 @@ public class ColonyPanel extends JPanel {
         south.add(totalLabel);
         south.add(Box.createVerticalStrut(4));
         south.add(apply);
+
+        south.add(Box.createVerticalStrut(10));
+        JLabel buildLabel = new JLabel("Building:");
+        buildLabel.setAlignmentX(LEFT_ALIGNMENT);
+        south.add(buildLabel);
+        buildCombo.setAlignmentX(LEFT_ALIGNMENT);
+        south.add(buildCombo);
+        JPanel limitRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        limitRow.setAlignmentX(LEFT_ALIGNMENT);
+        limitRow.add(new JLabel("Limit (0 = none):"));
+        limitRow.add(buildLimit);
+        limitRow.add(setBuildBtn);
+        south.add(limitRow);
+        setBuildBtn.addActionListener(e -> sendBuild());
         add(south, BorderLayout.SOUTH);
 
         setEnabledControls(false);
@@ -123,6 +147,7 @@ public class ColonyPanel extends JPanel {
             clear();
             return;
         }
+        designs = view.designs;
         systemId = sysId;
         load(sys);
     }
@@ -131,6 +156,7 @@ public class ColonyPanel extends JPanel {
     public void updateFromView(PlayerView view) {
         if (systemId < 0)
             return;
+        designs = view.designs;
         PlayerView.SystemDto sys = system(view, systemId);
         if ((sys == null) || (sys.colony == null)) {
             clear();
@@ -155,9 +181,36 @@ public class ColonyPanel extends JPanel {
             sliders[i].setEnabled(!locked[i]);
         }
         adjusting = false;
+        loadBuild(col);
         dirty = false;
         setEnabledControls(true);
         refreshLabels();
+    }
+
+    /** populate the build dropdown from the empire's designs, preselecting the current one */
+    private void loadBuild(PlayerView.ColonyDto col) {
+        buildCombo.removeAllItems();
+        if (designs != null)
+            for (PlayerView.DesignDto d : designs)
+                buildCombo.addItem(new DesignItem(d.slot, d.name));
+        if (col.shipyardDesign != null)
+            for (int i = 0; i < buildCombo.getItemCount(); i++)
+                if (col.shipyardDesign.equals(buildCombo.getItemAt(i).name)) {
+                    buildCombo.setSelectedIndex(i);
+                    break;
+                }
+        buildLimit.setValue(col.buildLimit);
+    }
+
+    private void sendBuild() {
+        DesignItem d = (DesignItem) buildCombo.getSelectedItem();
+        if (systemId < 0 || d == null)
+            return;
+        Messages.SetShipBuild msg = new Messages.SetShipBuild();
+        msg.systemId = systemId;
+        msg.designSlot = d.slot;
+        msg.buildLimit = (Integer) buildLimit.getValue();
+        orderSender.accept(msg);
     }
 
     private void clear() {
@@ -207,6 +260,9 @@ public class ColonyPanel extends JPanel {
         for (int i = 0; i < 5; i++)
             sliders[i].setEnabled(on && !locked[i]);
         apply.setEnabled(false);
+        buildCombo.setEnabled(on);
+        buildLimit.setEnabled(on);
+        setBuildBtn.setEnabled(on && buildCombo.getItemCount() > 0);
     }
 
     private int[] currentSliderValues() {
@@ -222,4 +278,13 @@ public class ColonyPanel extends JPanel {
                 return s;
         return null;
     }
+
+    /** a ship design choice in the build dropdown */
+    private static final class DesignItem {
+        final int slot;
+        final String name;
+        DesignItem(int slot, String name) { this.slot = slot; this.name = name; }
+        @Override public String toString() { return name; }
+    }
 }
+

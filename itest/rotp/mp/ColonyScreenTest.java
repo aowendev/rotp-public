@@ -93,6 +93,25 @@ public class ColonyScreenTest {
     }
 
     @Test
+    void colonyPanelLoadsShipBuildOptions() {
+        AtomicReference<Object> sent = new AtomicReference<>();
+        ColonyPanel panel = new ColonyPanel(sent::set);
+
+        PlayerView v = viewWithColony(7, new int[]{30, 0, 5, 10, 5});
+        v.systems.get(0).colony.shipyardDesign = "Scout";
+        v.systems.get(0).colony.buildLimit = 3;
+        PlayerView.DesignDto scout = new PlayerView.DesignDto();
+        scout.slot = 0; scout.name = "Scout";
+        PlayerView.DesignDto wasp = new PlayerView.DesignDto();
+        wasp.slot = 5; wasp.name = "Wasp";
+        v.designs.add(scout);
+        v.designs.add(wasp);
+
+        panel.showColony(7, v);   // headless: loads the build dropdown from designs, preselects "Scout"
+        assertEquals(7, panel.shownSystemId(), "colony loaded with build options");
+    }
+
+    @Test
     void clickingAColonyOnTheMapSelectsIt() {
         // wire the galaxy map to the colony panel exactly as ClientMain does
         AtomicReference<Object> sent = new AtomicReference<>();
