@@ -26,7 +26,9 @@ import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JSpinner;
 import javax.swing.KeyStroke;
+import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingUtilities;
 import rotp.mp.protocol.Messages;
 import rotp.mp.protocol.PlayerView;
@@ -137,7 +139,28 @@ public class ClientMain {
         menuBar.add(misc);
         frame.setJMenuBar(menuBar);
 
+        // host-only lobby controls: choose AI opponents and start the game with
+        // the humans present (hidden until we learn we're the host, and on start)
+        JLabel aiLabel = new JLabel("AI opponents:");
+        JSpinner aiSpinner = new JSpinner(new SpinnerNumberModel(2, 0, 8, 1));
+        JButton startBtn = new JButton("Start Game");
+        aiLabel.setVisible(false);
+        aiSpinner.setVisible(false);
+        startBtn.setVisible(false);
+        startBtn.addActionListener(e -> {
+            Messages.StartGame sg = new Messages.StartGame();
+            sg.aiOpponents = (Integer) aiSpinner.getValue();
+            clientHolder[0].sendMessage(sg);
+            startBtn.setEnabled(false);
+            status.setText("Starting game...");
+        });
+        JPanel lobby = new JPanel();
+        lobby.add(aiLabel);
+        lobby.add(aiSpinner);
+        lobby.add(startBtn);
+
         JPanel bottom = new JPanel(new BorderLayout());
+        bottom.add(lobby, BorderLayout.WEST);
         bottom.add(status, BorderLayout.CENTER);
         bottom.add(nextTurn, BorderLayout.EAST);
 
@@ -152,7 +175,23 @@ public class ClientMain {
         NetClient client = new NetClient(
             URI.create("ws://"+host+":"+port),
             name,
-            msg -> SwingUtilities.invokeLater(() -> handleMessage(msg, galaxyPanel, colonyPanel, researchPanel, fleetsPanel, shipDesignPanel, empirePanel, lastView, status, nextTurn)),
+            msg -> SwingUtilities.invokeLater(() -> {
+                if (msg instanceof Messages.Joined) {
+                    boolean amHost = ((Messages.Joined) msg).host;
+                    aiLabel.setVisible(amHost);
+                    aiSpinner.setVisible(amHost);
+                    startBtn.setVisible(amHost);
+                    status.setText(amHost
+                        ? "You are the host - choose AI opponents and press Start."
+                        : "Joined - waiting for the host to start the game.");
+                }
+                else if (msg instanceof Messages.GameStarted) {
+                    aiLabel.setVisible(false);
+                    aiSpinner.setVisible(false);
+                    startBtn.setVisible(false);
+                }
+                handleMessage(msg, galaxyPanel, colonyPanel, researchPanel, fleetsPanel, shipDesignPanel, empirePanel, lastView, status, nextTurn);
+            }),
             text -> SwingUtilities.invokeLater(() -> status.setText(text)));
         clientHolder[0] = client;
 

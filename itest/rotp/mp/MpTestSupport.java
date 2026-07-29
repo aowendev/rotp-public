@@ -121,6 +121,8 @@ public final class MpTestSupport {
         public final BlockingQueue<Messages.DesignCatalog> catalogs = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.Lobby> lobbies = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.GameStarted> starts = new LinkedBlockingQueue<>();
+        public final BlockingQueue<Messages.Joined> joins = new LinkedBlockingQueue<>();
+        public final BlockingQueue<Messages.Error> errors = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.Notifications> notifications = new LinkedBlockingQueue<>();
 
         private final WebSocketClient ws;
@@ -143,8 +145,9 @@ public final class MpTestSupport {
                     else if (msg instanceof Messages.DesignCatalog) catalogs.offer((Messages.DesignCatalog) msg);
                     else if (msg instanceof Messages.Lobby) lobbies.offer((Messages.Lobby) msg);
                     else if (msg instanceof Messages.GameStarted) starts.offer((Messages.GameStarted) msg);
+                    else if (msg instanceof Messages.Joined) joins.offer((Messages.Joined) msg);
                     else if (msg instanceof Messages.Notifications) notifications.offer((Messages.Notifications) msg);
-                    else if (msg instanceof Messages.Error) System.out.println("["+Client.this.name+"] server error: "+((Messages.Error) msg).text);
+                    else if (msg instanceof Messages.Error) errors.offer((Messages.Error) msg);
                 }
                 @Override public void onClose(int code, String reason, boolean remote) { }
                 @Override public void onError(Exception ex) { System.out.println("["+Client.this.name+"] ws error: "+ex); }
@@ -195,6 +198,14 @@ public final class MpTestSupport {
 
         public Messages.DiploReply awaitReply() throws Exception {
             return replies.poll(30, TimeUnit.SECONDS);
+        }
+
+        public Messages.Joined awaitJoined() throws Exception {
+            return joins.poll(10, TimeUnit.SECONDS);
+        }
+
+        public Messages.Error awaitError() throws Exception {
+            return errors.poll(10, TimeUnit.SECONDS);
         }
 
         public void close() throws Exception { ws.closeBlocking(); }

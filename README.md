@@ -50,7 +50,7 @@ java -jar target/rotp-*.jar --server port=8777 players=2     # headless multipla
 java -jar target/rotp-*.jar --client host=localhost port=8777 name=Alice
 ```
 
-The server starts a game as soon as `players` clients have joined. For LAN play, clients use the host machine's address; for internet play, the same server can run on any reachable machine.
+`players=` is the human capacity: the game auto-starts once that many join. The **first client to join is the host** and can start the game earlier from the lobby, choosing how many AI opponents to add — so a lone player can start a game against AI (solo-vs-AI on LAN). For LAN play, clients use the host machine's address; for internet play, the same server can run on any reachable machine.
 
 ## Protocol (v1)
 
@@ -59,7 +59,9 @@ Messages are JSON over WebSocket in a `{"t": <type>, "d": <payload>}` envelope; 
 | Type | Direction | Purpose |
 |---|---|---|
 | `hello` | client → server | Join with protocol version + player name |
+| `joined` | server → client | Acknowledges the join: the client's empire id and whether it's the host |
 | `lobby` | server → client | Roster of joined players, sent on every change |
+| `startGame` | client → server | Host starts the game with the humans present, filling the rest with AI (picks the AI-opponent count) |
 | `gameStarted` | server → client | Game created; tells the client its empire id |
 | `view` | server → client | `PlayerView`: everything this empire knows — systems (fog-of-war), own colonies (spending, pop, factories, bases, production, pending transports, build choice), research state, fleets, in-flight transports, ship design slots (hull, space, colony-ship flag). Sent on game start, after every turn, and after each accepted order |
 | `setColonyAlloc` | client → server | Colony spending: 5 categories (ship/def/ind/eco/tech), ticks summing to 50, locked categories honored |
@@ -108,8 +110,12 @@ All orders are validated server-side against the sending player's empire; client
 - Done: the core-playable set of DTO-rendered client screens — a clickable galaxy map (click to set a fleet destination), colony management (spending sliders → `setColonyAlloc`, plus choosing which design the colony builds → `setShipBuild`), research (allocation sliders → `setTechAllocations` + per-category research-target choice), fleets & transports (deploy fleets, send/abort transports), ship design (create/scrap from the design catalog), and a read-only empire overview (colonies, totals, contact/diplomacy) — all opened from a Mac-style menu bar wiring the Mac-port ⌘-shortcuts (⌘P Planet List, ⌘F Fleet List, ⌘D Ship Design, ⌘T Technology, ⌘N Next Turn). The full economy→build→expand loop is clickable end-to-end; a game is genuinely playable over the wire. The client renders from `PlayerView` and acts via commands, holding no game model, so it doubles as the blueprint for the eventual browser client (see the design doc's "Client rendering" note).
 - Deferred polish (not blockers): per-design partial fleet deploys, and broader notification coverage (combat/spy/GNN).
 
+**Phase 2 — LAN & session completeness (in progress):**
+- Done: a lobby that starts with the humans present and fills the rest with AI — the host chooses the AI-opponent count (so a lone player can play against AI on a LAN); only the host may start.
+- Remaining: confirm LAN play across machines; reconnection; multiplayer save/load; lobby race/color picks.
+
 **Roadmap:**
-1. **Phase 2 — full we-go multiplayer on LAN**: a lobby that can start with the humans present and fill the rest with AI (solo host vs AI, configurable AI count); reconnection; saves/loads of multiplayer games; lobby polish (race/color picks).
+1. **Phase 2 — full we-go multiplayer on LAN**: (lobby AI-fill done) reconnection; saves/loads of multiplayer games; lobby polish (race/color picks).
 2. **Phase 3 — optional interactivity**: remote prompts for tech choices/diplomacy/council votes with turn timers; async player-to-player diplomacy.
 3. **Phase 4 — internet hosting**: persistent lobby, authentication, server deployment.
 4. **Phase 5 — browser client** speaking the same protocol, reproducing the 1990s Macintosh port's interface feel and keyboard shortcuts.

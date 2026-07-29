@@ -38,6 +38,8 @@ public final class Protocol {
     static {
         register("hello",          Messages.Hello.class);
         register("lobby",          Messages.Lobby.class);
+        register("joined",         Messages.Joined.class);
+        register("startGame",      Messages.StartGame.class);
         register("gameStarted",    Messages.GameStarted.class);
         register("ready",          Messages.Ready.class);
         register("turnStatus",     Messages.TurnStatus.class);

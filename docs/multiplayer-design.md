@@ -59,7 +59,9 @@ Single-player ROTP conflates two questions in `isAIControlled()`. Multiplayer se
 | Type | Direction | Purpose |
 |---|---|---|
 | `hello` | C→S | Join: protocol version + player name |
+| `joined` | S→C | Ack a join: your empire id + whether you are the host |
 | `lobby` | S→C | Player roster, on every change |
+| `startGame` | C→S | Host starts now with the humans present, filling the rest with AI (chooses the AI-opponent count) |
 | `gameStarted` | S→C | Your empire id |
 | `view` | S→C | `PlayerView` snapshot (start, post-turn, post-order) |
 | `setColonyAlloc` | C→S | 5 categories, ticks sum to 50, locked honored |
@@ -130,6 +132,7 @@ Committed JUnit 5 integration tests live under `itest/rotp/mp/` and run with **`
 - `FleetsScreenTest` — fleet summarization by design name, deployability (orbiting + has ships), and the panel loading fleets/transports from a view.
 - `ShipDesignScreenTest` — free-slot computation, the panel requesting the design catalog on first data, and loading the catalog + designs.
 - `EmpireOverviewTest` — colony/fleet counts, production total, the diplomatic-relation summary, and the overview panel loading a view.
+- `LobbyStartTest` — a lone host starts a game against AI (1 human + N AI empires), and only the host may start (non-host attempts are refused).
 
 (Test harness note: `MpTestSupport.startServer` waits until the server's port is actually listening before returning, and each client connects exactly once — a `WebSocketClient` can't be reconnected, so the old connect-retry-on-the-same-object loop was replaced.)
 
@@ -139,7 +142,7 @@ Positive paths that depend on galaxy geography (reaching a colonizable planet, m
 
 - **Phase 0 — walking skeleton: done.** Maven build, protocol core, headless server, minimal DTO-rendered client, verified end-to-end.
 - **Phase 1 — playing the game: DONE.** Control split, we-go readiness, enriched `PlayerView`, and the full player order set — colony/tech allocations, **research selection** (`setResearchChoice`), fleet deployment, ship design lifecycle (catalog/create/scrap/set-build), colonization, population transports, spy networks + internal security, and diplomacy (offers/treaty-breaking/war, answered by the target's diplomat AI). Per-empire notification delivery (contact/diplomacy/colony/tech events, server-generated). And the full **core-playable client screen set** — clickable galaxy map (with map-click fleet destinations), colony management (`setColonyAlloc` + `setShipBuild`), research (allocation + per-category research-target choice), fleets & transports (deploy, send/abort), ship design (create/scrap from the `designCatalog`), and a read-only empire overview — each opening as a window from a Mac-style menu bar wiring the Mac-port ⌘-shortcuts. The full economy→build→expand loop is clickable end-to-end; a game is genuinely playable over the wire with no game model on the client. All verified by 28 committed JUnit integration tests. *Deferred polish (not blockers): per-design partial fleet deploys, and broader notification coverage (combat/spy/GNN) — good early Phase-3 companions since those are event-based.*
-- **Phase 2 — LAN & session completeness: next.** Confirm LAN play (server binds a LAN address; clients — Java now, browser later — connect from other machines on the network); a **lobby that can start with the humans present and fill the rest with AI** (solo host vs AI, configurable AI-opponent count); reconnection; multiplayer save/load; lobby race/color picks.
+- **Phase 2 — LAN & session completeness: in progress.** Done: the **lobby can start with the humans present and fill the rest with AI** — `players=` is the human capacity (auto-starts when full, ruleset AI count); the first player is the host and may `startGame` early, choosing the AI-opponent count (total empires = humans present + AI, clamped to the galaxy's `maximumOpponentsOptions()`). This realizes the solo-vs-AI-on-LAN requirement. Remaining: confirm LAN play across machines; reconnection; multiplayer save/load; lobby race/color picks.
 - **Phase 3 — optional interactivity:** remote prompts (tech/diplomacy/council) with turn timers; async player-to-player diplomacy in the order phase.
 - **Phase 4 — internet hosting:** persistent lobby, auth, deployment.
 - **Phase 5 — browser client** speaking the identical protocol (the DTO client screens are its blueprint), reproducing the **1990s Mac-port interaction feel and keyboard shortcuts** (see §1; source the specifics first — don't invent them).

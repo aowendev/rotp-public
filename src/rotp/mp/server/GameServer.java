@@ -59,6 +59,8 @@ public class GameServer extends WebSocketServer {
     /** serializes all game-state access (commands vs turn processing) */
     private final Object gameLock = new Object();
     private final NotificationCenter notiCenter = new NotificationCenter();
+    private WebSocket hostConn;   // first player to join; may start the game
+    private volatile boolean starting = false;
     private volatile boolean gameStarted = false;
     private volatile boolean turnRunning = false;
 
@@ -156,6 +158,8 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "declareWar", (Messages.DeclareWar) msg);
         else if (msg instanceof Messages.DesignCatalog)
             handleDesignCatalog(conn);
+        else if (msg instanceof Messages.StartGame)
+            handleStartGame(conn, (Messages.StartGame) msg);
         else
             send(conn, error("Unexpected message"));
     }
@@ -177,24 +181,67 @@ public class GameServer extends WebSocketServer {
         p.name = (hello.playerName == null || hello.playerName.isEmpty()) ? "Player" : hello.playerName;
         p.empireId = players.size();   // slot order for now
         players.put(conn, p);
-        System.out.println("[server] "+p.name+" joined as empire "+p.empireId);
+        if (hostConn == null)
+            hostConn = conn;   // the first player to join is the host
+        System.out.println("[server] "+p.name+" joined as empire "+p.empireId
+            + (conn == hostConn ? " (host)" : ""));
+
+        Messages.Joined joined = new Messages.Joined();
+        joined.empireId = p.empireId;
+        joined.host = (conn == hostConn);
+        send(conn, Protocol.encode(joined));
         broadcastLobby(p.name+" joined");
 
-        if (players.size() == humanSlots) {
-            Thread t = new Thread(this::startGame, "rotp-mp-start");
-            t.start();
-        }
+        // auto-start once every human slot is filled (ruleset default AI count)
+        if (players.size() == humanSlots)
+            beginStart(-1);
     }
 
-    private void startGame() {
-        System.out.println("[server] all players present - generating galaxy");
+    /** host asks to start now with the humans present, filling the rest with AI */
+    private synchronized void handleStartGame(WebSocket conn, Messages.StartGame msg) {
+        if (gameStarted || starting) {
+            send(conn, error("Game already starting"));
+            return;
+        }
+        if (conn != hostConn) {
+            send(conn, error("Only the host can start the game"));
+            return;
+        }
+        if (players.isEmpty()) {
+            send(conn, error("No players present"));
+            return;
+        }
+        beginStart(msg.aiOpponents);
+    }
+
+    /** guard so the game is generated exactly once, off the WebSocket thread */
+    private synchronized void beginStart(int aiOverride) {
+        if (starting || gameStarted)
+            return;
+        starting = true;
+        Thread t = new Thread(() -> startGame(aiOverride), "rotp-mp-start");
+        t.start();
+    }
+
+    private void startGame(int aiOverride) {
+        System.out.println("[server] generating galaxy (humans=" + players.size()
+            + ", aiOverride=" + aiOverride + ")");
         MOO1GameOptions options = new MOO1GameOptions();
         // interactive mid-turn events auto-resolve via each empire's AI
         options.selectedAutoplayOption(IGameOptions.AUTOPLAY_AI_BASE);
         if (galaxySize != null)
             options.selectedGalaxySize(galaxySize);
-        if (options.selectedNumberOpponents() < humanSlots-1)
-            options.selectedNumberOpponents(humanSlots-1);
+
+        int humans = players.size();
+        int opponents;
+        if (aiOverride >= 0)
+            opponents = humans + aiOverride - 1;   // total empires = humans + aiOverride
+        else
+            opponents = Math.max(options.selectedNumberOpponents(), humans - 1);
+        // at least one opponent, and no more than the galaxy allows
+        opponents = Math.max(1, Math.min(opponents, options.maximumOpponentsOptions()));
+        options.selectedNumberOpponents(opponents);
+        System.out.println("[server] " + humans + " human(s) + " + opponents + " AI opponent(s)");
         GameSession.instance().startGame(options);
 
         synchronized (this) {

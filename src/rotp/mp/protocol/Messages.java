@@ -44,6 +44,21 @@ public final class Messages {
         public boolean connected;
     }
 
+    /** server -> client: acknowledges a join, before the lobby roster */
+    public static class Joined {
+        public int empireId;
+        public boolean host;      // this player may start the game
+    }
+
+    /**
+     * client -> server: the host starts the game now with the humans present,
+     * filling the remaining empires with AI. aiOpponents = number of AI empires
+     * to add (-1 = use the ruleset default).
+     */
+    public static class StartGame {
+        public int aiOpponents = -1;
+    }
+
     /** server -> client: game created, you are this empire */
     public static class GameStarted {
         public int empireId;

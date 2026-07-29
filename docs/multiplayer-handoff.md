@@ -5,7 +5,7 @@ how to run what exists, and exactly what to do next. The full design rationale i
 in [`multiplayer-design.md`](multiplayer-design.md); this is the operational
 "pick up here" note.
 
-_Last updated: 2026-07-29 — **Phase 1 complete**: full core-playable client + research selection + tech notifications._
+_Last updated: 2026-07-29 — Phase 1 complete; Phase 2 started (lobby AI-fill / solo-vs-AI done)._
 
 ## Where we are
 
@@ -85,17 +85,22 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
 
 ## Do this next — Phase 2 (LAN & session completeness)
 
-Phase 1 is complete; the remaining client bits (per-design partial fleet deploys,
-broader combat/spy/GNN notifications) are deferred polish, not blockers. Move to
-Phase 2 breadth:
+Phase 1 is complete. Phase 2 is underway:
 
-1. **Lobby that starts with the humans present + AI fill** (realizes the
-   solo-vs-AI requirement, §"Product requirements"). Today `GameServer` starts
-   only when exactly `players=` humans join. Add a host "start now" action and an
-   AI-opponent-count option; the engine already supports human-vs-AI (tests run 1
-   human + AI). This is the highest-value Phase-2 item.
-2. **Reconnection**: let a dropped client rejoin its empire (the game keeps running
-   on the server; a rejoining client just needs a fresh `PlayerView`).
+**DONE — lobby AI-fill / solo-vs-AI.** `players=` is now the human *capacity*
+(auto-starts when full, ruleset AI count). The first player is the **host**
+(server sends `joined{empireId, host}`); the host may `startGame{aiOpponents}`
+early, and the game fills to `humans-present + aiOpponents` empires (clamped to
+`options.maximumOpponentsOptions()`). Client shows an AI-count spinner + Start
+button to the host. See `GameServer.startGame(int aiOverride)` and
+`LobbyStartTest`. This realizes the solo-vs-AI-on-LAN requirement.
+
+Next:
+
+1. **Reconnection**: let a dropped client rejoin its empire (the game keeps running
+   on the server; a rejoining client just needs a fresh `PlayerView`). Match a
+   returning `hello` to a departed player's slot (e.g. by name) rather than a new
+   join; re-send `gameStarted` + a `view`.
 3. **Multiplayer save/load**: the whole `GameSession` already serializes
    (`saveSession`/`loadSession`); add lobby actions to save/restore a running game,
    including the `remoteHuman` flags.
