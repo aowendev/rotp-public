@@ -60,6 +60,7 @@ public class ClientMain {
         ResearchPanel researchPanel = new ResearchPanel(order -> clientHolder[0].sendMessage(order));
         FleetsPanel fleetsPanel = new FleetsPanel(order -> clientHolder[0].sendMessage(order));
         ShipDesignPanel shipDesignPanel = new ShipDesignPanel(order -> clientHolder[0].sendMessage(order));
+        EmpirePanel empirePanel = new EmpirePanel();
         JLabel status = new JLabel("Connecting to "+host+":"+port+"...");
         JButton nextTurn = new JButton("Ready");
         nextTurn.setEnabled(false);
@@ -80,6 +81,11 @@ public class ClientMain {
         shipDesignWindow.setSize(560, 560);
         shipDesignWindow.setLocationByPlatform(true);
 
+        JFrame empireWindow = new JFrame("Empire Overview");
+        empireWindow.add(empirePanel);
+        empireWindow.setSize(580, 480);
+        empireWindow.setLocationByPlatform(true);
+
         Runnable ready = () -> {
             nextTurn.setEnabled(false);
             status.setText("Ready - waiting for other players...");
@@ -97,6 +103,13 @@ public class ClientMain {
         // the accelerator mask is Cmd on macOS, Ctrl elsewhere
         int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
         JMenuBar menuBar = new JMenuBar();
+
+        JMenu planets = new JMenu("Planets");
+        JMenuItem planetListItem = new JMenuItem("Planet List");
+        planetListItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, menuMask));
+        planetListItem.addActionListener(e -> empireWindow.setVisible(!empireWindow.isVisible()));
+        planets.add(planetListItem);
+        menuBar.add(planets);
 
         JMenu fleet = new JMenu("Fleet");
         JMenuItem fleetListItem = new JMenuItem("Fleet List");
@@ -136,7 +149,7 @@ public class ClientMain {
         NetClient client = new NetClient(
             URI.create("ws://"+host+":"+port),
             name,
-            msg -> SwingUtilities.invokeLater(() -> handleMessage(msg, galaxyPanel, colonyPanel, researchPanel, fleetsPanel, shipDesignPanel, lastView, status, nextTurn)),
+            msg -> SwingUtilities.invokeLater(() -> handleMessage(msg, galaxyPanel, colonyPanel, researchPanel, fleetsPanel, shipDesignPanel, empirePanel, lastView, status, nextTurn)),
             text -> SwingUtilities.invokeLater(() -> status.setText(text)));
         clientHolder[0] = client;
 
@@ -147,7 +160,7 @@ public class ClientMain {
 
     private static void handleMessage(Object msg, GalaxyViewPanel galaxyPanel, ColonyPanel colonyPanel,
                                       ResearchPanel researchPanel, FleetsPanel fleetsPanel,
-                                      ShipDesignPanel shipDesignPanel,
+                                      ShipDesignPanel shipDesignPanel, EmpirePanel empirePanel,
                                       PlayerView[] lastView, JLabel status, JButton nextTurn) {
         if (msg instanceof Messages.Lobby) {
             Messages.Lobby lobby = (Messages.Lobby) msg;
@@ -164,6 +177,7 @@ public class ClientMain {
             researchPanel.updateFromView(view);
             fleetsPanel.updateFromView(view);
             shipDesignPanel.updateFromView(view);
+            empirePanel.updateFromView(view);
             status.setText(view.empireName+"  -  "+view.year+" (turn "+view.turn+")");
             nextTurn.setEnabled(true);
         }

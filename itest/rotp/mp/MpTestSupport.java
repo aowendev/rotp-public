@@ -79,7 +79,24 @@ public final class MpTestSupport {
         // contact (a remote human's fleets don't auto-explore) and run fast
         GameServer server = new GameServer(port, humanSlots, rotp.model.game.IGameOptions.SIZE_TINY);
         server.start();  // non-blocking (WebSocketServer)
+        waitUntilListening(port, 10_000);
         return new Server(server, port);
+    }
+
+    /** block until the server is accepting TCP connections (start() is async) */
+    private static void waitUntilListening(int port, long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            try (java.net.Socket probe = new java.net.Socket()) {
+                probe.connect(new java.net.InetSocketAddress("localhost", port), 200);
+                return;
+            }
+            catch (java.io.IOException notYet) {
+                try { Thread.sleep(100); }
+                catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
+            }
+        }
+        throw new RuntimeException("server never started listening on port " + port);
     }
 
     public static final class Server {
@@ -136,12 +153,10 @@ public final class MpTestSupport {
         }
 
         private void connectWithRetry() throws Exception {
-            for (int i = 0; i < 20; i++) {
-                if (ws.connectBlocking(2, TimeUnit.SECONDS))
-                    return;
-                Thread.sleep(200);
-            }
-            throw new RuntimeException(name+": could not connect to server");
+            // the server is already listening (startServer waited), and a
+            // WebSocketClient can only be connected once, so connect a single time
+            if (!ws.connectBlocking(10, TimeUnit.SECONDS))
+                throw new RuntimeException(name+": could not connect to server");
         }
 
         public void raw(Object msg) { ws.send(Protocol.encode(msg)); }

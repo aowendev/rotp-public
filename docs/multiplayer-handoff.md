@@ -5,7 +5,7 @@ how to run what exists, and exactly what to do next. The full design rationale i
 in [`multiplayer-design.md`](multiplayer-design.md); this is the operational
 "pick up here" note.
 
-_Last updated: 2026-07-29, after the colony + research + fleets + ship-design client screens and the Mac-port UX spec._
+_Last updated: 2026-07-29, after the core-playable client screen set (colony, research, fleets, ship-design, empire overview) and the Mac-port UX spec._
 
 ## Where we are
 
@@ -69,27 +69,27 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   and acts via commands — **no game model on the client**. Settled architecture
   (design doc "Client rendering"): reusing ROTP's real Swing panels was rejected
   because a browser can use none of it.
-- `ColonyPanel` also chooses which design the colony builds (`setShipBuild`): a
-  design dropdown (from `PlayerView.designs`) + build limit + Set button, so a
-  newly created design is no longer inert.
-- Verified by `itest/rotp/mp/` (22 tests): order/isolation, design/transport,
+- `ColonyPanel` also chooses which design the colony builds (`setShipBuild`), and
+  `EmpirePanel` (Planet List ⌘P) is a read-only overview — colonies table, empire
+  totals, and each contacted empire's diplomatic status. This is the
+  **core-playable screen set**; the full economy→build→expand loop is clickable
+  end-to-end (research → design → set colony build + ship spending → deploy fleets).
+- Verified by `itest/rotp/mp/` (25 tests): order/isolation, design/transport,
   spy/diplomacy (also assert notification delivery), and the colony / research /
-  fleets / ship-design screens (redistribution, DTO load, map click hit-test,
-  build-option load, fleet summarization/deployability, free-slot computation,
-  catalog request, and the server equalizing research to sum-60 at start).
+  fleets / ship-design / empire-overview screens (redistribution, DTO load, map
+  click hit-test, build-option load, fleet summarization, free-slot computation,
+  catalog request, empire rollups, and the server equalizing research at start).
+  Harness: `startServer` waits for the port to listen, then each client connects
+  once (a WebSocketClient can't be reconnected — old retry loop was flaky).
 
 ## Do this next (in order)
 
-1. **Port the remaining core-playable screens** — the DTO-client way (render from
-   `PlayerView`, act via commands; grow `rotp.mp.client` screen by screen, like
-   the existing panels; open each as a window from the menu bar with its Mac
-   ⌘-shortcut).
-   - **Empire/status overview** (Planet List ⌘P): colonies, totals,
-     contact/diplomacy from `EmpireDto` — mostly read-only, a good next screen.
-   - Fleets/transports polish: per-design partial deploys (currently whole-fleet
-     only) and map-click destination selection (currently a dropdown).
-   The full economy→build→expand loop is now clickable end-to-end: research →
-   design a ship → set a colony to build it (with ship spending) → deploy fleets.
+1. **Extend notification coverage** (see item 2 below) and/or **fleet-screen
+   polish**: per-design partial deploys (currently whole-fleet only) and map-click
+   destination selection (currently a dropdown). The core screens are all ported;
+   remaining client work is polish, so this is a good point to pivot to Phase 2
+   (LAN lobby: start-with-humans-present + AI-opponent count; reconnection;
+   multiplayer save/load) if you'd rather build breadth than depth.
    Keep pure rendering-independent logic in small non-Swing classes (browser
    blueprint + unit-testable), and add a `ColonyScreenTest`-style test per screen.
    Note: the desktop **single-player** game is untouched by this work — it still
