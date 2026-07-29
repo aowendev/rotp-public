@@ -16,11 +16,17 @@
 package rotp.mp.client;
 
 import java.awt.BorderLayout;
+import java.awt.Toolkit;
+import java.awt.event.KeyEvent;
 import java.net.URI;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 import rotp.mp.protocol.Messages;
 import rotp.mp.protocol.PlayerView;
@@ -51,9 +57,22 @@ public class ClientMain {
 
         GalaxyViewPanel galaxyPanel = new GalaxyViewPanel();
         ColonyPanel colonyPanel = new ColonyPanel(order -> clientHolder[0].sendMessage(order));
+        ResearchPanel researchPanel = new ResearchPanel(order -> clientHolder[0].sendMessage(order));
         JLabel status = new JLabel("Connecting to "+host+":"+port+"...");
         JButton nextTurn = new JButton("Ready");
         nextTurn.setEnabled(false);
+
+        // research opens as its own window (each screen is a window, like the Mac port)
+        JFrame researchWindow = new JFrame("Research");
+        researchWindow.add(researchPanel);
+        researchWindow.setSize(470, 320);
+        researchWindow.setLocationByPlatform(true);
+
+        Runnable ready = () -> {
+            nextTurn.setEnabled(false);
+            status.setText("Ready - waiting for other players...");
+            clientHolder[0].sendReady(true);
+        };
 
         // clicking one of your colonies opens it in the colony panel
         galaxyPanel.onSystemClicked(sysId -> {
@@ -61,6 +80,22 @@ public class ClientMain {
             if ((v != null) && (sysId >= 0))
                 colonyPanel.showColony(sysId, v);
         });
+
+        // Mac-style menu bar with the Mac-port shortcuts (see docs/mac-ux-spec.md);
+        // the accelerator mask is Cmd on macOS, Ctrl elsewhere
+        int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        JMenuBar menuBar = new JMenuBar();
+        JMenu misc = new JMenu("Misc");
+        JMenuItem techItem = new JMenuItem("Technology");
+        techItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_T, menuMask));
+        techItem.addActionListener(e -> researchWindow.setVisible(!researchWindow.isVisible()));
+        JMenuItem nextTurnItem = new JMenuItem("Next Turn (Ready)");
+        nextTurnItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, menuMask));
+        nextTurnItem.addActionListener(e -> { if (nextTurn.isEnabled()) ready.run(); });
+        misc.add(techItem);
+        misc.add(nextTurnItem);
+        menuBar.add(misc);
+        frame.setJMenuBar(menuBar);
 
         JPanel bottom = new JPanel(new BorderLayout());
         bottom.add(status, BorderLayout.CENTER);
@@ -77,21 +112,17 @@ public class ClientMain {
         NetClient client = new NetClient(
             URI.create("ws://"+host+":"+port),
             name,
-            msg -> SwingUtilities.invokeLater(() -> handleMessage(msg, galaxyPanel, colonyPanel, lastView, status, nextTurn)),
+            msg -> SwingUtilities.invokeLater(() -> handleMessage(msg, galaxyPanel, colonyPanel, researchPanel, lastView, status, nextTurn)),
             text -> SwingUtilities.invokeLater(() -> status.setText(text)));
         clientHolder[0] = client;
 
-        nextTurn.addActionListener(e -> {
-            nextTurn.setEnabled(false);
-            status.setText("Ready - waiting for other players...");
-            clientHolder[0].sendReady(true);
-        });
+        nextTurn.addActionListener(e -> ready.run());
 
         client.connect();
     }
 
     private static void handleMessage(Object msg, GalaxyViewPanel galaxyPanel, ColonyPanel colonyPanel,
-                                      PlayerView[] lastView, JLabel status, JButton nextTurn) {
+                                      ResearchPanel researchPanel, PlayerView[] lastView, JLabel status, JButton nextTurn) {
         if (msg instanceof Messages.Lobby) {
             Messages.Lobby lobby = (Messages.Lobby) msg;
             status.setText("Lobby ("+lobby.slots.size()+" joined): "+lobby.message);
@@ -104,6 +135,7 @@ public class ClientMain {
             lastView[0] = view;
             galaxyPanel.view(view);
             colonyPanel.updateFromView(view);
+            researchPanel.updateFromView(view);
             status.setText(view.empireName+"  -  "+view.year+" (turn "+view.turn+")");
             nextTurn.setEnabled(true);
         }

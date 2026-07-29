@@ -200,8 +200,15 @@ public class GameServer extends WebSocketServer {
                 Empire emp = galaxy().empire(p.empireId);
                 if (emp != null) {
                     emp.makeRemoteHuman();
-                    // baseline so turn-1 state isn't reported as "news"
-                    synchronized (gameLock) { notiCenter.seed(emp); }
+                    synchronized (gameLock) {
+                        // a remote human's research starts unallocated (all zero):
+                        // the desktop equalizes it when the tech screen opens, and
+                        // the AI that would set it is intentionally gated off. Give
+                        // them a sensible 100%-allocated even split up front.
+                        emp.tech().equalizeAllocations();
+                        // baseline so turn-1 state isn't reported as "news"
+                        notiCenter.seed(emp);
+                    }
                 }
             }
         }
