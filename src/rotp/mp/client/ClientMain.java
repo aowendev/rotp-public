@@ -58,15 +58,21 @@ public class ClientMain {
         GalaxyViewPanel galaxyPanel = new GalaxyViewPanel();
         ColonyPanel colonyPanel = new ColonyPanel(order -> clientHolder[0].sendMessage(order));
         ResearchPanel researchPanel = new ResearchPanel(order -> clientHolder[0].sendMessage(order));
+        FleetsPanel fleetsPanel = new FleetsPanel(order -> clientHolder[0].sendMessage(order));
         JLabel status = new JLabel("Connecting to "+host+":"+port+"...");
         JButton nextTurn = new JButton("Ready");
         nextTurn.setEnabled(false);
 
-        // research opens as its own window (each screen is a window, like the Mac port)
+        // each screen opens as its own window (like the Mac port)
         JFrame researchWindow = new JFrame("Research");
         researchWindow.add(researchPanel);
         researchWindow.setSize(470, 320);
         researchWindow.setLocationByPlatform(true);
+
+        JFrame fleetsWindow = new JFrame("Fleets & Transports");
+        fleetsWindow.add(fleetsPanel);
+        fleetsWindow.setSize(480, 420);
+        fleetsWindow.setLocationByPlatform(true);
 
         Runnable ready = () -> {
             nextTurn.setEnabled(false);
@@ -85,6 +91,14 @@ public class ClientMain {
         // the accelerator mask is Cmd on macOS, Ctrl elsewhere
         int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
         JMenuBar menuBar = new JMenuBar();
+
+        JMenu fleet = new JMenu("Fleet");
+        JMenuItem fleetListItem = new JMenuItem("Fleet List");
+        fleetListItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, menuMask));
+        fleetListItem.addActionListener(e -> fleetsWindow.setVisible(!fleetsWindow.isVisible()));
+        fleet.add(fleetListItem);
+        menuBar.add(fleet);
+
         JMenu misc = new JMenu("Misc");
         JMenuItem techItem = new JMenuItem("Technology");
         techItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_T, menuMask));
@@ -112,7 +126,7 @@ public class ClientMain {
         NetClient client = new NetClient(
             URI.create("ws://"+host+":"+port),
             name,
-            msg -> SwingUtilities.invokeLater(() -> handleMessage(msg, galaxyPanel, colonyPanel, researchPanel, lastView, status, nextTurn)),
+            msg -> SwingUtilities.invokeLater(() -> handleMessage(msg, galaxyPanel, colonyPanel, researchPanel, fleetsPanel, lastView, status, nextTurn)),
             text -> SwingUtilities.invokeLater(() -> status.setText(text)));
         clientHolder[0] = client;
 
@@ -122,7 +136,8 @@ public class ClientMain {
     }
 
     private static void handleMessage(Object msg, GalaxyViewPanel galaxyPanel, ColonyPanel colonyPanel,
-                                      ResearchPanel researchPanel, PlayerView[] lastView, JLabel status, JButton nextTurn) {
+                                      ResearchPanel researchPanel, FleetsPanel fleetsPanel,
+                                      PlayerView[] lastView, JLabel status, JButton nextTurn) {
         if (msg instanceof Messages.Lobby) {
             Messages.Lobby lobby = (Messages.Lobby) msg;
             status.setText("Lobby ("+lobby.slots.size()+" joined): "+lobby.message);
@@ -136,6 +151,7 @@ public class ClientMain {
             galaxyPanel.view(view);
             colonyPanel.updateFromView(view);
             researchPanel.updateFromView(view);
+            fleetsPanel.updateFromView(view);
             status.setText(view.empireName+"  -  "+view.year+" (turn "+view.turn+")");
             nextTurn.setEnabled(true);
         }
