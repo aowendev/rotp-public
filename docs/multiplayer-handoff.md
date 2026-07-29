@@ -10,15 +10,17 @@ _Last updated: 2026-07-29 — Phase 1 complete; Phase 2 started (lobby AI-fill /
 ## Where we are
 
 Branch **`multiplayer`** (off `master`). **Phases 0 and 1 are complete and
-committed.** A game is genuinely playable end-to-end over the wire: a headless
-server runs the real game; the DTO client renders every core screen (galaxy
-map, colony, research, fleets & transports, ship design, empire overview) from
-`PlayerView` and drives every decision — economy, research (incl. choosing what
-to research), ship design + build, expansion, transports, spy, diplomacy — via
-commands, holding no game model. We-go turns; per-empire notifications
-(contact/diplomacy/colony/tech). 28 JUnit integration tests, green.
+committed; Phase 2 is underway** (lobby AI-fill / solo-vs-AI done). A game is
+genuinely playable end-to-end over the wire: a headless server runs the real
+game; the DTO client renders every core screen (galaxy map, colony, research,
+fleets & transports, ship design, empire overview) from `PlayerView` and drives
+every decision — economy, research (incl. choosing what to research), ship
+design + build, expansion, transports, spy, diplomacy — via commands, holding no
+game model. We-go turns; per-empire notifications (contact/diplomacy/colony/tech);
+a lobby where the host can start against AI. **30 JUnit integration tests, green.**
 
-**Next is Phase 2** (LAN & session completeness) — see "Do this next".
+**Continuing Phase 2** (LAN & session completeness) — see "Do this next".
+Latest commit: `7a2cdd95` (Phase 2 lobby AI-fill).
 
 ## Run it
 
@@ -33,6 +35,8 @@ mvn test
 mvn dependency:build-classpath -Dmdep.outputFile=cp.txt
 java -cp "target/classes:$(cat cp.txt)" rotp.Rotp --server port=8777 players=2 size=small
 java -cp "target/classes:$(cat cp.txt)" rotp.Rotp --client host=localhost port=8777 name=Alice
+# solo vs AI: `players=1` auto-starts alone; or with players=N the first client
+# (the host) presses Start in the lobby to begin with AI filling the empty slots
 
 # classic offline single-player still works, unchanged
 java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
@@ -74,12 +78,13 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   overview. Map clicks set the fleet-deploy destination. This is the
   **core-playable screen set**; the full economy→build→expand loop is clickable
   end-to-end (choose research → design → set colony build + ship spending → deploy).
-- Verified by `itest/rotp/mp/` (28 tests): order/isolation, design/transport,
-  spy/diplomacy (also assert notification delivery incl. TECH), and the colony /
+- Verified by `itest/rotp/mp/` (30 tests): order/isolation, design/transport,
+  spy/diplomacy (also assert notification delivery incl. TECH), the colony /
   research / fleets / ship-design / empire-overview screens (redistribution, DTO
   load, map click hit-test + fleet-destination, build-option load, research-choice
   round-trip, tech-completion notification, fleet summarization, free-slot/catalog,
-  empire rollups, server equalizing research at start).
+  empire rollups, server equalizing research at start), and the lobby
+  (`LobbyStartTest`: solo host vs AI, host-only start).
   Harness: `startServer` waits for the port to listen, then each client connects
   once (a WebSocketClient can't be reconnected — old retry loop was flaky).
 
