@@ -20,6 +20,9 @@ import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.function.IntConsumer;
 import javax.swing.JPanel;
 import rotp.mp.protocol.PlayerView;
 
@@ -39,11 +42,59 @@ public class GalaxyViewPanel extends JPanel {
         new Color(255,255,255)
     };
 
+    private static final int MARGIN = 30;
+
     private PlayerView view;
+    private float scale = 1f;
+    private int selectedSystemId = -1;
+    private IntConsumer systemClickListener = id -> { };
+
+    public GalaxyViewPanel() {
+        addMouseListener(new MouseAdapter() {
+            @Override public void mousePressed(MouseEvent e) { handleClick(e.getX(), e.getY()); }
+        });
+    }
 
     public void view(PlayerView v) {
         this.view = v;
         repaint();
+    }
+
+    /** notified with the clicked system's id, or -1 when clicking empty space */
+    public void onSystemClicked(IntConsumer listener) {
+        this.systemClickListener = listener;
+    }
+
+    public void select(int systemId) {
+        this.selectedSystemId = systemId;
+        repaint();
+    }
+
+    private void handleClick(int px, int py) {
+        PlayerView v = view;
+        if (v == null)
+            return;
+        int best = systemAt(v, px, py, MARGIN, scale);
+        selectedSystemId = best;
+        repaint();
+        systemClickListener.accept(best);
+    }
+
+    /**
+     * The id of the system nearest a screen point (within a click tolerance),
+     * or -1 if the click missed. Pure so the hit-testing is unit-testable
+     * without a display.
+     */
+    public static int systemAt(PlayerView v, int px, int py, int margin, float scale) {
+        int best = -1;
+        float bestD = 14 * 14;   // click tolerance in pixels, squared
+        for (PlayerView.SystemDto s : v.systems) {
+            float sx = margin + s.x * scale;
+            float sy = margin + s.y * scale;
+            float d = (sx - px) * (sx - px) + (sy - py) * (sy - py);
+            if (d < bestD) { bestD = d; best = s.id; }
+        }
+        return best;
     }
 
     @Override
@@ -61,16 +112,19 @@ public class GalaxyViewPanel extends JPanel {
             return;
         }
 
-        int margin = 30;
-        float scale = Math.min(
-            (getWidth()-2f*margin) / Math.max(1, v.galaxyWidth),
-            (getHeight()-2f*margin) / Math.max(1, v.galaxyHeight));
+        scale = Math.min(
+            (getWidth()-2f*MARGIN) / Math.max(1, v.galaxyWidth),
+            (getHeight()-2f*MARGIN) / Math.max(1, v.galaxyHeight));
 
         g.setFont(new Font("SansSerif", Font.PLAIN, 11));
         for (PlayerView.SystemDto s : v.systems) {
-            int x = margin + (int)(s.x * scale);
-            int y = margin + (int)(s.y * scale);
+            int x = MARGIN + (int)(s.x * scale);
+            int y = MARGIN + (int)(s.y * scale);
 
+            if (s.id == selectedSystemId) {
+                g.setColor(Color.YELLOW);
+                g.drawOval(x-9, y-9, 18, 18);
+            }
             if (s.colonized && (s.ownerId >= 0)) {
                 g.setColor(empireColor(v, s.ownerId));
                 g.drawOval(x-6, y-6, 12, 12);

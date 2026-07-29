@@ -46,10 +46,21 @@ public class ClientMain {
         JFrame frame = new JFrame("ROTP Multiplayer - "+name);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
+        NetClient[] clientHolder = new NetClient[1];
+        PlayerView[] lastView = new PlayerView[1];
+
         GalaxyViewPanel galaxyPanel = new GalaxyViewPanel();
+        ColonyPanel colonyPanel = new ColonyPanel(order -> clientHolder[0].sendMessage(order));
         JLabel status = new JLabel("Connecting to "+host+":"+port+"...");
         JButton nextTurn = new JButton("Ready");
         nextTurn.setEnabled(false);
+
+        // clicking one of your colonies opens it in the colony panel
+        galaxyPanel.onSystemClicked(sysId -> {
+            PlayerView v = lastView[0];
+            if ((v != null) && (sysId >= 0))
+                colonyPanel.showColony(sysId, v);
+        });
 
         JPanel bottom = new JPanel(new BorderLayout());
         bottom.add(status, BorderLayout.CENTER);
@@ -57,16 +68,16 @@ public class ClientMain {
 
         frame.setLayout(new BorderLayout());
         frame.add(galaxyPanel, BorderLayout.CENTER);
+        frame.add(colonyPanel, BorderLayout.EAST);
         frame.add(bottom, BorderLayout.SOUTH);
-        frame.setSize(1000, 750);
+        frame.setSize(1200, 750);
         frame.setLocationByPlatform(true);
         frame.setVisible(true);
 
-        NetClient[] clientHolder = new NetClient[1];
         NetClient client = new NetClient(
             URI.create("ws://"+host+":"+port),
             name,
-            msg -> SwingUtilities.invokeLater(() -> handleMessage(msg, galaxyPanel, status, nextTurn)),
+            msg -> SwingUtilities.invokeLater(() -> handleMessage(msg, galaxyPanel, colonyPanel, lastView, status, nextTurn)),
             text -> SwingUtilities.invokeLater(() -> status.setText(text)));
         clientHolder[0] = client;
 
@@ -79,8 +90,8 @@ public class ClientMain {
         client.connect();
     }
 
-    private static void handleMessage(Object msg, GalaxyViewPanel galaxyPanel,
-                                      JLabel status, JButton nextTurn) {
+    private static void handleMessage(Object msg, GalaxyViewPanel galaxyPanel, ColonyPanel colonyPanel,
+                                      PlayerView[] lastView, JLabel status, JButton nextTurn) {
         if (msg instanceof Messages.Lobby) {
             Messages.Lobby lobby = (Messages.Lobby) msg;
             status.setText("Lobby ("+lobby.slots.size()+" joined): "+lobby.message);
@@ -90,7 +101,9 @@ public class ClientMain {
         }
         else if (msg instanceof PlayerView) {
             PlayerView view = (PlayerView) msg;
+            lastView[0] = view;
             galaxyPanel.view(view);
+            colonyPanel.updateFromView(view);
             status.setText(view.empireName+"  -  "+view.year+" (turn "+view.turn+")");
             nextTurn.setEnabled(true);
         }

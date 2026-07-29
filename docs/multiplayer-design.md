@@ -28,7 +28,7 @@ The earlier `web` branch (Tomcat/JSP scaffold with a stubbed engine bridge and s
 
 - `rotp.mp.protocol` — `Protocol` (envelope/registry), `Messages` (lobby, orders, status), `PlayerView` (+ nested DTOs). No dependencies on model or UI.
 - `rotp.mp.server` — `ServerMain` (headless bootstrap), `GameServer` (WebSocket lobby, command handling, turn driver), `PlayerViews` (DTO builder), `ServerUI` (headless `SessionUI`).
-- `rotp.mp.client` — `NetClient` (WebSocket), `ClientMain` + `GalaxyViewPanel` (minimal DTO-rendered client; real screens ported later).
+- `rotp.mp.client` — `NetClient` (WebSocket), `ClientMain`, and DTO-rendered screens: `GalaxyViewPanel` (clickable galaxy map), `ColonyPanel` (colony management), `ColonyAllocations` (pure spending-redistribution logic). More screens added incrementally.
 - `itest/rotp/mp` — JUnit integration tests + `MpTestSupport` harness. This is a separate `testSourceDirectory` because the main `sourceDirectory` is the whole `src` tree (so `src/test` would be built as main code) and `.gitignore` excludes any `test/` dir.
 
 One fat jar, three modes: no args = classic desktop; `--server port= players= [size=tiny|small|medium|large|huge]`; `--client host= port= name=`.
@@ -87,6 +87,12 @@ Single-player ROTP conflates two questions in `isAIControlled()`. Multiplayer se
 
 Server-side command handling: rejected while a turn resolves; applied under a game lock; validated for ownership, bounds, range (`ShipFleet.canSendTo`, `Empire.canSendTransportsTo`), space (`ShipDesign.availableSpace`), and lock flags; successful orders return a fresh `PlayerView` to the sender.
 
+### Client rendering: DTO-rendered screens (decided 2026-07-29)
+
+The client renders each screen **from `PlayerView` and acts via commands** — it holds no game model. The rejected alternative was reusing ROTP's real Swing panels by shipping each client a fog-of-war-filtered *model snapshot*; that would reach full ROTP-fidelity UI faster but is a dead end for the project's stated goal (a browser client over a language-neutral API): a browser can run neither Swing nor a Java-serialized model, so that path produces nothing the browser can reuse and would have to be rebuilt from scratch. The DTO approach compounds toward the browser instead — porting a screen forces the protocol to carry exactly what that screen needs, so the Java client becomes a **reference client** that proves the API is sufficient before any JavaScript is written. The Swing paint code itself is throwaway either way; the reusable asset is the protocol + interaction design.
+
+Consequence: rendering-independent logic that a browser client will also need (e.g. colony-spending redistribution, `ColonyAllocations`) is kept in small pure classes, separate from the Swing widgets, so it is unit-testable and serves as a portable spec.
+
 ### Notifications (per-empire, server-generated)
 
 ROTP's built-in notifications cannot be reused for multiplayer: every one is written from the single local `player()`'s fog-of-war perspective (`player().sv.name(...)`, `player().knowsOf(...)`) and creation is gated on `isPlayerControlled()` across ~150 sites — which is false for *every* empire on the autoplay server, so almost nothing is generated and there is no empire attribution. Retrofitting all of that (much of it interactive-prompt code we deliberately auto-resolve) would be a very large refactor.
@@ -112,14 +118,15 @@ Committed JUnit 5 integration tests live under `itest/rotp/mp/` and run with **`
 - `OrderCommandsTest` — two players in one game: fog-of-war isolation (no foreign colony detail leaks), colony/tech/fleet orders, ownership + bounds rejection, we-go readiness (one-ready does not advance), and orders surviving AI-driven turn resolution.
 - `ShipDesignTransportTest` — design catalog/create/scrap/set-build with space and slot validation; colonization; population transport schedule/abort/deliver.
 - `SpyDiplomacyTest` — internal security, spy spending/missions, and diplomatic offers/war/peace answered by the target's diplomat AI. Also asserts per-empire notifications: first contact → `CONTACT`, declaring war → `DIPLOMACY`; `ShipDesignTransportTest` asserts colonization → `COLONY_GAINED`.
+- `ColonyScreenTest` — the colony management screen without a display: spending redistribution keeps the total fixed and honours locks, the panel loads a `ColonyDto`, and the galaxy-map click hit-test selects the right system and opens it. (Swing components construct fine headless; only *showing* them needs a display.)
 
 Positive paths that depend on galaxy geography (reaching a colonizable planet, making first contact) use JUnit *assumptions*, so an unlucky galaxy seed **skips** those assertions rather than failing — the always-true mechanics (validation, rejection, persistence) are hard assertions. Tests run on a **tiny galaxy** (`startServer` passes `SIZE_TINY`) so empires start close and first contact is reliable — a remote human's fleets don't auto-explore, so the tests drive scouting themselves (`MpTestSupport.explore`). The whole suite runs in ~20s. The engine's RNG is unseeded (`Base.random`); seeding it for fully deterministic tests is a known future improvement.
 
 ## 7. Phase plan and status
 
 - **Phase 0 — walking skeleton: done.** Maven build, protocol core, headless server, minimal DTO-rendered client, verified end-to-end.
-- **Phase 1 — playing the game: in progress.** Done: control split, we-go readiness, enriched `PlayerView`, the full player order set — colony/tech allocations, fleet deployment, ship design lifecycle (catalog/create/scrap/set-build), colonization, population transports, spy networks + internal security, and diplomacy (offers/treaty-breaking/war, answered by the target's diplomat AI) — and per-empire notification delivery (contact/diplomacy/colony events, server-generated). All verified by committed JUnit integration tests. Remaining: porting the real Swing screens to consume `PlayerView` (largest work item), and extending notification coverage (tech/combat/spy/GNN).
-- **Phase 2 — LAN completeness:** reconnection, multiplayer save/load, lobby race/color picks.
+- **Phase 1 — playing the game: in progress.** Done: control split, we-go readiness, enriched `PlayerView`, the full player order set — colony/tech allocations, fleet deployment, ship design lifecycle (catalog/create/scrap/set-build), colonization, population transports, spy networks + internal security, and diplomacy (offers/treaty-breaking/war, answered by the target's diplomat AI); per-empire notification delivery (contact/diplomacy/colony events, server-generated); and the **first DTO-rendered client screens** — a clickable galaxy map and the colony-management screen (spending sliders → `setColonyAlloc`). All verified by committed JUnit integration tests. Remaining: porting the rest of the core-playable screens (fleets/transports, research, ship design, empire status), and extending notification coverage (tech/combat/spy/GNN).
+- **Phase 2 — LAN & session completeness:** confirm LAN play (server binds a LAN address; clients — Java now, browser later — connect from other machines on the network), reconnection, multiplayer save/load, lobby race/color picks.
 - **Phase 3 — optional interactivity:** remote prompts (tech/diplomacy/council) with turn timers; async player-to-player diplomacy in the order phase.
 - **Phase 4 — internet hosting:** persistent lobby, auth, deployment.
-- **Phase 5 — browser client** speaking the identical protocol.
+- **Phase 5 — browser client** speaking the identical protocol (the DTO client screens are its blueprint).

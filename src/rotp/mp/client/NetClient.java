@@ -80,4 +80,10 @@ public class NetClient extends WebSocketClient {
             send(Protocol.encode(msg));
         }
     }
+
+    /** send any protocol message (order, request, ...) to the server */
+    public void sendMessage(Object msg) {
+        if (isOpen())
+            send(Protocol.encode(msg));
+    }
 }

@@ -103,7 +103,8 @@ All orders are validated server-side against the sending player's empire; client
 - Done: the full expansion loop over the wire — ship design (catalog/create/scrap/set-build, space-validated), colonization (auto on arrival per v1 AI-assist, plus an explicit `colonize` command), and population transports (send/abort, delivery verified end-to-end).
 - Done: spy and diplomacy commands — spy spending/missions and internal security; diplomatic offers (trade/peace/pact/alliance) answered by the target's diplomat AI, treaty breaking, war declarations; contact status (treaties, trade levels, spy networks) in `PlayerView`.
 - Done: per-empire notification delivery — the server generates each player's events (first contact, diplomatic changes, colonies gained/lost) itself, since ROTP's built-in notifications are single-player-only.
-- Remaining: porting the real game screens to the protocol; extending notification coverage (tech, combat, spy reports, GNN).
+- Done: the first DTO-rendered client screens — a clickable galaxy map and a colony-management screen (spending sliders wired to `setColonyAlloc`). The client renders from `PlayerView` and acts via commands, holding no game model, so it doubles as the blueprint for the eventual browser client (see the design doc's "Client rendering" note).
+- Remaining: porting the rest of the core-playable screens (fleets/transports, research, ship design, empire status); extending notification coverage (tech, combat, spy reports, GNN).
 
 **Roadmap:**
 1. **Phase 2 — full we-go multiplayer on LAN**: reconnection, saves/loads of multiplayer games, lobby polish (race/color picks).

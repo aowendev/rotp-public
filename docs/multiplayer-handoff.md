@@ -5,7 +5,7 @@ how to run what exists, and exactly what to do next. The full design rationale i
 in [`multiplayer-design.md`](multiplayer-design.md); this is the operational
 "pick up here" note.
 
-_Last updated: 2026-07-28, after per-empire notification delivery._
+_Last updated: 2026-07-29, after the first DTO-rendered client screens (galaxy map + colony)._
 
 ## Where we are
 
@@ -13,8 +13,10 @@ Branch **`multiplayer`** (off `master`). Phase 0 and most of Phase 1 are done an
 **at the protocol level**: a headless server runs the real game, clients drive
 every economic, military, expansion, spy, and diplomatic decision over
 JSON/WebSocket, and each player receives per-empire notifications of what
-happened each turn. What's missing is a real UI (the Java client is still a
-minimal galaxy-map stub) and broader notification coverage.
+happened each turn. The client UI is now being built the DTO-rendered way
+(a clickable galaxy map and a working colony screen exist); most remaining
+work is porting the rest of the core-playable screens and broadening
+notification coverage.
 
 Commits so far: `Phase 0`, `Phase I part 1`, `Phase 1 part 2`, `Phae 1 part 3`
 (plus this test/handoff commit).
@@ -55,21 +57,33 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   itself (`rotp.mp.server.NotificationCenter`) by diffing that empire's state,
   rather than reusing ROTP's single-player notification classes. v1 covers first
   contact, diplomatic status changes, and colonies gained/lost.
-- Verified by `itest/rotp/mp/` (4 tests): order/isolation, design/transport,
-  spy/diplomacy (the last two also assert notification delivery).
+- **DTO-rendered client screens**: `ClientMain` shows a clickable galaxy map
+  (`GalaxyViewPanel`) and a colony-management screen (`ColonyPanel`, with the
+  pure `ColonyAllocations` redistribution logic). The client renders from
+  `PlayerView` and acts via commands — **no game model on the client**. This is
+  the settled architecture (design doc "Client rendering"): reuse of ROTP's real
+  Swing panels was rejected because a browser can use none of it.
+- Verified by `itest/rotp/mp/` (10 tests): order/isolation, design/transport,
+  spy/diplomacy (also assert notification delivery), and colony-screen logic
+  (redistribution, DTO load, map click hit-test).
 
 ## Do this next (in order)
 
-1. **Port the real Swing screens to the protocol** (largest remaining item, and
-   the thing standing between "playable at the protocol level" and "playable").
-   Replace direct-model reads in the main/colony/fleet/tech/design/races screens
-   with `PlayerView` DTOs, and wire their buttons to protocol commands instead of
-   direct model mutation. The DTO/command surface built in Phase 1 is designed to
-   cover the "core playable set" (galaxy map, colony spending, fleets/transports,
-   tech, ship design, empire status). Do it screen by screen; keep the desktop
-   single-player path working (the same panels still run against a local
-   `GameSession` — consider a client-side view provider so panels don't care
-   whether data came from the model or the wire).
+1. **Port the remaining core-playable screens** — the DTO-client way (render from
+   `PlayerView`, act via commands; grow `rotp.mp.client` screen by screen, like
+   `ColonyPanel`). The order set already exists for all of these:
+   - **Fleets & transports**: list own fleets, select, deploy/redeploy in range
+     (`deployFleet`), send/abort transports.
+   - **Research**: 6 category sliders → `setTechAllocations` (reuse the
+     `ColonyAllocations`-style pure redistribution, but capped 0–60 each).
+   - **Ship design**: catalog → build a design (`designCatalog` / `createDesign` /
+     `scrapDesign` / `setShipBuild`).
+   - **Empire/status overview**: colonies, totals, contact/diplomacy from `EmpireDto`.
+   Keep pure rendering-independent logic in small non-Swing classes (browser
+   blueprint + unit-testable), and add a `ColonyScreenTest`-style test per screen.
+   Note: the desktop **single-player** game is untouched by this work — it still
+   runs its own Swing UI against a local `GameSession`; the `rotp.mp.client`
+   screens are a *separate* client, not a modification of the desktop screens.
 
 2. **Extend notification coverage.** `NotificationCenter` currently diffs owned
    systems + contacts + treaty flags. Add snapshot fields + diff cases for
@@ -111,7 +125,9 @@ Phase 5 (browser client). See design doc §7.
 - `src/rotp/mp/server/` — `ServerMain`, `GameServer` (lobby + commands + turn driver),
   `PlayerViews` (DTO builder), `NotificationCenter` (per-empire event diffing),
   `ServerUI` (headless `SessionUI`).
-- `src/rotp/mp/client/` — `NetClient`, `ClientMain`, `GalaxyViewPanel` (stub UI).
+- `src/rotp/mp/client/` — `NetClient`, `ClientMain`, `GalaxyViewPanel` (clickable
+  map), `ColonyPanel` (colony screen), `ColonyAllocations` (pure spending logic).
+  DTO-rendered, no game model on the client.
 - `itest/rotp/mp/` — integration tests + `MpTestSupport` harness.
 - Engine seams: `rotp.model.game.SessionUI`; `Empire.decidedByAI/isRemoteHuman`;
   moved statics in `Rotp` (scaling, debug file) and `GameSession` (pending options).
