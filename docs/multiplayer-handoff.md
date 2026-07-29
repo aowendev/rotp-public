@@ -5,7 +5,7 @@ how to run what exists, and exactly what to do next. The full design rationale i
 in [`multiplayer-design.md`](multiplayer-design.md); this is the operational
 "pick up here" note.
 
-_Last updated: 2026-07-29 — Phase 1 complete; Phase 2 started (lobby AI-fill / solo-vs-AI done)._
+_Last updated: 2026-07-29 — Phase 1 complete; a Phase 2 item (lobby AI-fill) done; **now doing Phase 1.5 (human-validated full playthrough) — see "Do this next"**._
 
 ## Where we are
 
@@ -88,9 +88,42 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   Harness: `startServer` waits for the port to listen, then each client connects
   once (a WebSocketClient can't be reconnected — old retry loop was flaky).
 
-## Do this next — Phase 2 (LAN & session completeness)
+## Do this next — Phase 1.5 (human-validated full playthrough)
 
-Phase 1 is complete. Phase 2 is underway:
+**This is the current focus** (decided 2026-07-29 after a live solo play session).
+Goal: prove by *actually playing* that a complete solo game can be played
+**start → win/loss** in the Java reference client, and fix every gap that blocks
+completion. **API-completeness-first, NOT UI polish** — the Java client is a
+validation harness, not the product; real UX is deferred to the browser client
+(Swing polish is throwaway). Add only enough Java UI to reach each action.
+
+A playthrough must exercise: pick a **race** (+color; homeworld named by race) →
+explore & **colonize** (usable dispatch) → research incl. **choosing** what to
+research → **design + build** ships (see them built) → move fleets & see a
+**combat** outcome → some **diplomacy** → **observe victory/defeat**.
+
+Division of labor: the **human plays/validates**; the model fixes what they hit
+(can't meaningfully drive a Swing app via automation). Start with #1.
+
+Known backlog:
+1. **Race/color selection** — API + server + minimal lobby UI. Server currently
+   auto-assigns races via the galaxy factory; add a lobby step exposing free races
+   and a command to pick one, then assign it (and the race's homeworld name). This
+   is real, reusable protocol work the browser client also needs. Also the
+   Phase-2 "lobby race/color" item — do it here.
+2. **Homeworld name from race** — server, rides along with #1 (`race.defaultHomeworldName()`).
+3. **Fleet dispatch / colonize affordance** — mostly UI; the API already supports
+   it (`deployFleet` to any system; colony ship auto-settles on arrival; `colonize`).
+   Make sending scouts/colony ships out (incl. many at once) actually usable.
+4. **Victory/defeat signaling to clients** — likely an API gap: the server sets a
+   game-over flag (`ServerUI.selectGameOverPanel` → `gameOver`) but doesn't send it.
+   Add a `gameOver` protocol message so the client can show you won/lost.
+5. **Scout-exploration convenience** — UI nicety.
+
+Caveat: council votes + incoming AI diplomacy are auto-resolved (Phase 3), so
+"full playthrough" = you can win/lose a game, not every interactive prompt restored.
+
+## Then — Phase 2 (LAN & session completeness)
 
 **DONE — lobby AI-fill / solo-vs-AI.** `players=` is now the human *capacity*
 (auto-starts when full, ruleset AI count). The first player is the **host**
@@ -100,7 +133,7 @@ early, and the game fills to `humans-present + aiOpponents` empires (clamped to
 button to the host. See `GameServer.startGame(int aiOverride)` and
 `LobbyStartTest`. This realizes the solo-vs-AI-on-LAN requirement.
 
-Next:
+Remaining Phase 2:
 
 1. **Reconnection**: let a dropped client rejoin its empire (the game keeps running
    on the server; a rejoining client just needs a fresh `PlayerView`). Match a

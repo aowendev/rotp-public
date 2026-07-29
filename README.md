@@ -115,7 +115,8 @@ All orders are validated server-side against the sending player's empire; client
 - Remaining: confirm LAN play across machines; reconnection; multiplayer save/load; lobby race/color picks.
 
 **Roadmap:**
-1. **Phase 2 — full we-go multiplayer on LAN**: (lobby AI-fill done) reconnection; saves/loads of multiplayer games; lobby polish (race/color picks).
+1. **Phase 1.5 — human-validated full playthrough (current focus)**: a person plays a complete solo game (start → win/loss) in the reference client; fix every gap that blocks completion, API-completeness-first (race/color selection, homeworld naming, usable fleet dispatch, victory/defeat signaling), keeping the Java UI minimal — real UX is the browser client's job.
+2. **Phase 2 — full we-go multiplayer on LAN**: (lobby AI-fill done) reconnection; saves/loads of multiplayer games; lobby polish (race/color picks).
 2. **Phase 3 — optional interactivity**: remote prompts for tech choices/diplomacy/council votes with turn timers; async player-to-player diplomacy.
 3. **Phase 4 — internet hosting**: persistent lobby, authentication, server deployment.
 4. **Phase 5 — browser client** speaking the same protocol, reproducing the 1990s Macintosh port's interface feel and keyboard shortcuts.
