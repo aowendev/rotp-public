@@ -126,6 +126,8 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "setColonyAlloc", (Messages.SetColonyAllocations) msg);
         else if (msg instanceof Messages.SetTechAllocations)
             handleCommand(conn, "setTechAlloc", (Messages.SetTechAllocations) msg);
+        else if (msg instanceof Messages.SetResearchChoice)
+            handleCommand(conn, "setResearchChoice", (Messages.SetResearchChoice) msg);
         else if (msg instanceof Messages.DeployFleet)
             handleCommand(conn, "deployFleet", (Messages.DeployFleet) msg);
         else if (msg instanceof Messages.SendTransports)
@@ -306,6 +308,8 @@ public class GameServer extends WebSocketServer {
                 err = applyColonyAllocations(emp, (Messages.SetColonyAllocations) cmd);
             else if (cmd instanceof Messages.SetTechAllocations)
                 err = applyTechAllocations(emp, (Messages.SetTechAllocations) cmd);
+            else if (cmd instanceof Messages.SetResearchChoice)
+                err = applyResearchChoice(emp, (Messages.SetResearchChoice) cmd);
             else if (cmd instanceof Messages.DeployFleet)
                 err = applyDeployFleet(emp, (Messages.DeployFleet) cmd);
             else if (cmd instanceof Messages.SendTransports)
@@ -368,6 +372,18 @@ public class GameServer extends WebSocketServer {
         }
         for (int i = 0; i < Colony.NUM_CATS; i++)
             col.allocation(i, alloc[i]);
+        return null;
+    }
+
+    private String applyResearchChoice(Empire emp, Messages.SetResearchChoice cmd) {
+        if ((cmd.category < 0) || (cmd.category >= TechTree.NUM_CATEGORIES))
+            return "Category must be 0-" + (TechTree.NUM_CATEGORIES - 1);
+        TechCategory cat = emp.tech().category(cmd.category);
+        if ((cmd.techId == null) || !cat.techIdsAvailableForResearch().contains(cmd.techId))
+            return "Not an available research choice for that category";
+        rotp.model.tech.Tech t = rotp.model.tech.TechLibrary.current().tech(cmd.techId);
+        if ((t == null) || !cat.currentTech(t))
+            return "Could not set that research target";
         return null;
     }
 

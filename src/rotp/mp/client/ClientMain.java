@@ -92,11 +92,14 @@ public class ClientMain {
             clientHolder[0].sendReady(true);
         };
 
-        // clicking one of your colonies opens it in the colony panel
+        // clicking a system opens your colony there (if any) and sets it as the
+        // fleets screen's deploy destination
         galaxyPanel.onSystemClicked(sysId -> {
             PlayerView v = lastView[0];
-            if ((v != null) && (sysId >= 0))
+            if ((v != null) && (sysId >= 0)) {
                 colonyPanel.showColony(sysId, v);
+                fleetsPanel.selectDestination(sysId);
+            }
         });
 
         // Mac-style menu bar with the Mac-port shortcuts (see docs/mac-ux-spec.md);

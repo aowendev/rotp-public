@@ -45,6 +45,7 @@ public final class Protocol {
         register("view",           PlayerView.class);
         register("setColonyAlloc", Messages.SetColonyAllocations.class);
         register("setTechAlloc",   Messages.SetTechAllocations.class);
+        register("setResearchChoice", Messages.SetResearchChoice.class);
         register("deployFleet",    Messages.DeployFleet.class);
         register("sendTransports", Messages.SendTransports.class);
         register("abortTransports",Messages.AbortTransports.class);

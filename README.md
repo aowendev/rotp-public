@@ -64,6 +64,7 @@ Messages are JSON over WebSocket in a `{"t": <type>, "d": <payload>}` envelope; 
 | `view` | server → client | `PlayerView`: everything this empire knows — systems (fog-of-war), own colonies (spending, pop, factories, bases, production, pending transports, build choice), research state, fleets, in-flight transports, ship design slots (hull, space, colony-ship flag). Sent on game start, after every turn, and after each accepted order |
 | `setColonyAlloc` | client → server | Colony spending: 5 categories (ship/def/ind/eco/tech), ticks summing to 50, locked categories honored |
 | `setTechAlloc` | client → server | Research allocation: 6 categories, 0–60 ticks each |
+| `setResearchChoice` | client → server | Choose which tech a research category works toward (from its available choices), overriding the AI's default |
 | `deployFleet` | client → server | Send an orbiting fleet (whole, or per-design counts) to a system in range |
 | `sendTransports` | client → server | Send population from a colony to a colonized system in range (max half the population) |
 | `abortTransports` | client → server | Cancel pending (unlaunched) transports at a colony |
@@ -95,16 +96,17 @@ All orders are validated server-side against the sending player's empire; client
 - Minimal client: joins a lobby, renders the galaxy map purely from `PlayerView` JSON, and can advance the turn.
 - Verified end-to-end: two clients with distinct fog-of-war views, 15-turn headless soak, desktop regression.
 
-**Phase 1 — playing the game (in progress):**
+**Phase 1 — playing the game (done):**
 - Done: per-empire human control — players' empires are flagged `remoteHuman`, so the AI auto-resolves their mid-turn prompts but never overwrites their strategic orders (`Empire.decidedByAI()`).
 - Done: first commands with server-side ownership validation — colony spending allocation, research allocation, fleet deployment — plus we-go ready flags (turn resolves when all players are ready; a disconnect can't block the turn).
 - Done: `PlayerView` carries own-colony detail, research state, fleets, and ship design slots; every accepted order returns a fresh view.
 - Verified by a scripted two-player test: hostile/invalid orders rejected, orders survive turn resolution, deployed fleets move.
 - Done: the full expansion loop over the wire — ship design (catalog/create/scrap/set-build, space-validated), colonization (auto on arrival per v1 AI-assist, plus an explicit `colonize` command), and population transports (send/abort, delivery verified end-to-end).
 - Done: spy and diplomacy commands — spy spending/missions and internal security; diplomatic offers (trade/peace/pact/alliance) answered by the target's diplomat AI, treaty breaking, war declarations; contact status (treaties, trade levels, spy networks) in `PlayerView`.
-- Done: per-empire notification delivery — the server generates each player's events (first contact, diplomatic changes, colonies gained/lost) itself, since ROTP's built-in notifications are single-player-only.
-- Done: the core-playable set of DTO-rendered client screens — a clickable galaxy map, colony management (spending sliders → `setColonyAlloc`, plus choosing which design the colony builds → `setShipBuild`), research (six category sliders → `setTechAllocations`), fleets & transports (deploy fleets, send/abort transports), ship design (create/scrap from the design catalog), and a read-only empire overview (colonies, totals, contact/diplomacy) — all opened from a Mac-style menu bar wiring the Mac-port ⌘-shortcuts (⌘P Planet List, ⌘F Fleet List, ⌘D Ship Design, ⌘T Technology, ⌘N Next Turn). The full economy→build→expand loop is clickable end-to-end. The client renders from `PlayerView` and acts via commands, holding no game model, so it doubles as the blueprint for the eventual browser client (see the design doc's "Client rendering" note).
-- Remaining: extending notification coverage (tech, combat, spy reports, GNN); fleet-screen polish (per-design partial deploys, map-click destinations).
+- Done: research selection — the scientist AI picks a sensible default for remote humans (research never stalls), and `setResearchChoice` lets the player override each category's target from its available techs, as a non-blocking order.
+- Done: per-empire notification delivery — the server generates each player's events (first contact, diplomatic changes, colonies gained/lost, technologies researched) itself, since ROTP's built-in notifications are single-player-only.
+- Done: the core-playable set of DTO-rendered client screens — a clickable galaxy map (click to set a fleet destination), colony management (spending sliders → `setColonyAlloc`, plus choosing which design the colony builds → `setShipBuild`), research (allocation sliders → `setTechAllocations` + per-category research-target choice), fleets & transports (deploy fleets, send/abort transports), ship design (create/scrap from the design catalog), and a read-only empire overview (colonies, totals, contact/diplomacy) — all opened from a Mac-style menu bar wiring the Mac-port ⌘-shortcuts (⌘P Planet List, ⌘F Fleet List, ⌘D Ship Design, ⌘T Technology, ⌘N Next Turn). The full economy→build→expand loop is clickable end-to-end; a game is genuinely playable over the wire. The client renders from `PlayerView` and acts via commands, holding no game model, so it doubles as the blueprint for the eventual browser client (see the design doc's "Client rendering" note).
+- Deferred polish (not blockers): per-design partial fleet deploys, and broader notification coverage (combat/spy/GNN).
 
 **Roadmap:**
 1. **Phase 2 — full we-go multiplayer on LAN**: a lobby that can start with the humans present and fill the rest with AI (solo host vs AI, configurable AI count); reconnection; saves/loads of multiplayer games; lobby polish (race/color picks).

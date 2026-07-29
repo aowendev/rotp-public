@@ -5,21 +5,20 @@ how to run what exists, and exactly what to do next. The full design rationale i
 in [`multiplayer-design.md`](multiplayer-design.md); this is the operational
 "pick up here" note.
 
-_Last updated: 2026-07-29, after the core-playable client screen set (colony, research, fleets, ship-design, empire overview) and the Mac-port UX spec._
+_Last updated: 2026-07-29 — **Phase 1 complete**: full core-playable client + research selection + tech notifications._
 
 ## Where we are
 
-Branch **`multiplayer`** (off `master`). Phase 0 and most of Phase 1 are done and committed. The game is fully playable
-**at the protocol level**: a headless server runs the real game, clients drive
-every economic, military, expansion, spy, and diplomatic decision over
-JSON/WebSocket, and each player receives per-empire notifications of what
-happened each turn. The client UI is now being built the DTO-rendered way
-(a clickable galaxy map and a working colony screen exist); most remaining
-work is porting the rest of the core-playable screens and broadening
-notification coverage.
+Branch **`multiplayer`** (off `master`). **Phases 0 and 1 are complete and
+committed.** A game is genuinely playable end-to-end over the wire: a headless
+server runs the real game; the DTO client renders every core screen (galaxy
+map, colony, research, fleets & transports, ship design, empire overview) from
+`PlayerView` and drives every decision — economy, research (incl. choosing what
+to research), ship design + build, expansion, transports, spy, diplomacy — via
+commands, holding no game model. We-go turns; per-empire notifications
+(contact/diplomacy/colony/tech). 28 JUnit integration tests, green.
 
-Commits so far: `Phase 0`, `Phase I part 1`, `Phase 1 part 2`, `Phae 1 part 3`
-(plus this test/handoff commit).
+**Next is Phase 2** (LAN & session completeness) — see "Do this next".
 
 ## Run it
 
@@ -69,42 +68,52 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   and acts via commands — **no game model on the client**. Settled architecture
   (design doc "Client rendering"): reusing ROTP's real Swing panels was rejected
   because a browser can use none of it.
-- `ColonyPanel` also chooses which design the colony builds (`setShipBuild`), and
-  `EmpirePanel` (Planet List ⌘P) is a read-only overview — colonies table, empire
-  totals, and each contacted empire's diplomatic status. This is the
+- `ColonyPanel` also chooses which design the colony builds (`setShipBuild`);
+  `ResearchPanel` lets the player choose each category's research target
+  (`setResearchChoice`, dropdowns); `EmpirePanel` (Planet List ⌘P) is a read-only
+  overview. Map clicks set the fleet-deploy destination. This is the
   **core-playable screen set**; the full economy→build→expand loop is clickable
-  end-to-end (research → design → set colony build + ship spending → deploy fleets).
-- Verified by `itest/rotp/mp/` (25 tests): order/isolation, design/transport,
-  spy/diplomacy (also assert notification delivery), and the colony / research /
-  fleets / ship-design / empire-overview screens (redistribution, DTO load, map
-  click hit-test, build-option load, fleet summarization, free-slot computation,
-  catalog request, empire rollups, and the server equalizing research at start).
+  end-to-end (choose research → design → set colony build + ship spending → deploy).
+- Verified by `itest/rotp/mp/` (28 tests): order/isolation, design/transport,
+  spy/diplomacy (also assert notification delivery incl. TECH), and the colony /
+  research / fleets / ship-design / empire-overview screens (redistribution, DTO
+  load, map click hit-test + fleet-destination, build-option load, research-choice
+  round-trip, tech-completion notification, fleet summarization, free-slot/catalog,
+  empire rollups, server equalizing research at start).
   Harness: `startServer` waits for the port to listen, then each client connects
   once (a WebSocketClient can't be reconnected — old retry loop was flaky).
 
-## Do this next (in order)
+## Do this next — Phase 2 (LAN & session completeness)
 
-1. **Extend notification coverage** (see item 2 below) and/or **fleet-screen
-   polish**: per-design partial deploys (currently whole-fleet only) and map-click
-   destination selection (currently a dropdown). The core screens are all ported;
-   remaining client work is polish, so this is a good point to pivot to Phase 2
-   (LAN lobby: start-with-humans-present + AI-opponent count; reconnection;
-   multiplayer save/load) if you'd rather build breadth than depth.
-   Keep pure rendering-independent logic in small non-Swing classes (browser
-   blueprint + unit-testable), and add a `ColonyScreenTest`-style test per screen.
-   Note: the desktop **single-player** game is untouched by this work — it still
-   runs its own Swing UI against a local `GameSession`; the `rotp.mp.client`
-   screens are a *separate* client, not a modification of the desktop screens.
-   Gotcha (from research): a remote human's per-turn allocations that the desktop
-   UI would initialize (like `tech().equalizeAllocations()`) are NOT set on the
-   server, since both the desktop UI and the AI-assist are off — initialize such
-   state explicitly in `GameServer.startGame` (as done for research).
+Phase 1 is complete; the remaining client bits (per-design partial fleet deploys,
+broader combat/spy/GNN notifications) are deferred polish, not blockers. Move to
+Phase 2 breadth:
 
-2. **Extend notification coverage.** `NotificationCenter` currently diffs owned
-   systems + contacts + treaty flags. Add snapshot fields + diff cases for
-   tech completed, combat outcomes, spy reports, and GNN news. Note the one
-   known gap: an empire met *via* a simultaneous war declaration reports only
-   `CONTACT`, not the war (the war is still in `EmpireDto.atWar`).
+1. **Lobby that starts with the humans present + AI fill** (realizes the
+   solo-vs-AI requirement, §"Product requirements"). Today `GameServer` starts
+   only when exactly `players=` humans join. Add a host "start now" action and an
+   AI-opponent-count option; the engine already supports human-vs-AI (tests run 1
+   human + AI). This is the highest-value Phase-2 item.
+2. **Reconnection**: let a dropped client rejoin its empire (the game keeps running
+   on the server; a rejoining client just needs a fresh `PlayerView`).
+3. **Multiplayer save/load**: the whole `GameSession` already serializes
+   (`saveSession`/`loadSession`); add lobby actions to save/restore a running game,
+   including the `remoteHuman` flags.
+4. **Lobby polish**: race/color picks before start.
+
+Deferred Phase-1 polish (pick up any time): per-design partial fleet deploys
+(`deployFleet.counts[]` — surface per-design count spinners on a selected fleet);
+`NotificationCenter` combat/spy/GNN events (event-based — natural Phase-3
+companions). Known notification gap: an empire met *via* a simultaneous war
+declaration reports only `CONTACT`, not the war (still in `EmpireDto.atWar`).
+
+Reminders for any further screen/order work: keep pure rendering-independent logic
+in small non-Swing classes (browser blueprint + unit-testable) with a
+`ColonyScreenTest`-style test; the desktop **single-player** game is untouched
+(`rotp.mp.client` is a separate client). Gotcha: per-turn state the desktop UI
+would initialize for a human (e.g. `tech().equalizeAllocations()`) is NOT set for
+remote humans server-side — initialize it in `GameServer.startGame` (as done for
+research).
 
 ## Product requirements to keep in mind (design doc §1)
 

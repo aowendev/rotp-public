@@ -57,7 +57,8 @@ public class ResearchPanel extends JPanel {
     private final JLabel rpLabel = new JLabel(" ");
     private final JSlider[] sliders = new JSlider[6];
     private final JLabel[] valueLabels = new JLabel[6];
-    private final JLabel[] researchingLabels = new JLabel[6];
+    @SuppressWarnings("unchecked")
+    private final javax.swing.JComboBox<ChoiceItem>[] choiceCombos = new javax.swing.JComboBox[6];
     private final JLabel totalLabel = new JLabel(" ");
     private final JButton apply = new JButton("Apply research");
 
@@ -87,9 +88,9 @@ public class ResearchPanel extends JPanel {
             s.addChangeListener(e -> onSliderChanged(idx));
             sliders[i] = s;
             valueLabels[i] = new JLabel("0%");
-            researchingLabels[i] = new JLabel(" ");
-            researchingLabels[i].setFont(researchingLabels[i].getFont().deriveFont(Font.ITALIC, 10f));
-            researchingLabels[i].setForeground(java.awt.Color.GRAY);
+            javax.swing.JComboBox<ChoiceItem> choice = new javax.swing.JComboBox<>();
+            choice.addActionListener(e -> onChoiceChanged(idx));
+            choiceCombos[i] = choice;
 
             c.gridy = i * 2;
             c.gridx = 0; c.weightx = 0;
@@ -100,8 +101,11 @@ public class ResearchPanel extends JPanel {
             grid.add(valueLabels[i], c);
 
             c.gridy = i * 2 + 1;
-            c.gridx = 1; c.weightx = 1;
-            grid.add(researchingLabels[i], c);
+            c.gridx = 0; c.weightx = 0;
+            grid.add(new JLabel("  research:"), c);
+            c.gridx = 1; c.weightx = 1; c.gridwidth = 2;
+            grid.add(choice, c);
+            c.gridwidth = 1;
         }
         add(grid, BorderLayout.CENTER);
 
@@ -132,14 +136,57 @@ public class ResearchPanel extends JPanel {
         for (int i = 0; i < 6; i++) {
             int v = (t.alloc != null && i < t.alloc.length) ? t.alloc[i] : 0;
             sliders[i].setValue(v);
-            String r = (t.researching != null && i < t.researching.length) ? t.researching[i] : null;
-            researchingLabels[i].setText((r == null || r.isEmpty()) ? "(nothing selected)" : ("→ " + r));
+            loadChoices(i, t);
         }
         adjusting = false;
         dirty = false;
         loaded = true;
         setControlsEnabled(true);
         refreshLabels();
+    }
+
+    /** populate a category's research-target dropdown, preselecting the current tech */
+    private void loadChoices(int i, PlayerView.TechDto t) {
+        javax.swing.JComboBox<ChoiceItem> combo = choiceCombos[i];
+        combo.removeAllItems();
+        String currentId = (t.researchingId != null && i < t.researchingId.length) ? t.researchingId[i] : null;
+        boolean hasCurrent = false;
+        if (t.choices != null && i < t.choices.size())
+            for (PlayerView.TechChoice ch : t.choices.get(i)) {
+                combo.addItem(new ChoiceItem(ch));
+                if (ch.id.equals(currentId))
+                    hasCurrent = true;
+            }
+        // the tech currently being researched is no longer in the "available" list
+        if (currentId != null && !hasCurrent) {
+            String name = (t.researching != null && i < t.researching.length) ? t.researching[i] : currentId;
+            combo.insertItemAt(new ChoiceItem(currentId, name), 0);
+        }
+        if (combo.getItemCount() == 0)
+            combo.addItem(new ChoiceItem(null, "(nothing to research)"));
+        selectChoice(combo, currentId);
+    }
+
+    private void onChoiceChanged(int idx) {
+        if (adjusting)
+            return;
+        ChoiceItem sel = (ChoiceItem) choiceCombos[idx].getSelectedItem();
+        if (sel == null || sel.id == null)
+            return;
+        Messages.SetResearchChoice msg = new Messages.SetResearchChoice();
+        msg.category = idx;
+        msg.techId = sel.id;
+        orderSender.accept(msg);
+    }
+
+    private static void selectChoice(javax.swing.JComboBox<ChoiceItem> combo, String id) {
+        for (int i = 0; i < combo.getItemCount(); i++) {
+            String itemId = combo.getItemAt(i).id;
+            if (itemId != null && itemId.equals(id)) {
+                combo.setSelectedIndex(i);
+                return;
+            }
+        }
     }
 
     private void onSliderChanged(int idx) {
@@ -176,6 +223,8 @@ public class ResearchPanel extends JPanel {
     private void setControlsEnabled(boolean on) {
         for (JSlider s : sliders)
             s.setEnabled(on);
+        for (javax.swing.JComboBox<ChoiceItem> c : choiceCombos)
+            c.setEnabled(on);
         apply.setEnabled(false);
     }
 
@@ -184,5 +233,17 @@ public class ResearchPanel extends JPanel {
         for (int i = 0; i < 6; i++)
             a[i] = sliders[i].getValue();
         return a;
+    }
+
+    /** a research-target choice in a category dropdown */
+    private static final class ChoiceItem {
+        final String id;
+        final String label;
+        ChoiceItem(PlayerView.TechChoice c) {
+            this.id = c.id;
+            this.label = c.name + " (" + c.cost + " RP)";
+        }
+        ChoiceItem(String id, String label) { this.id = id; this.label = label; }
+        @Override public String toString() { return label; }
     }
 }

@@ -96,9 +96,18 @@ public final class PlayerView {
 
     /** research: 6 categories (computer/construction/forcefield/planetology/propulsion/weapon) */
     public static class TechDto {
-        public int[] alloc;           // ticks 0-60 per category
-        public String[] researching;  // current tech name per category, null if none
+        public int[] alloc;             // ticks 0-60 per category
+        public String[] researching;    // current tech name per category, null if none
+        public String[] researchingId;  // current tech id per category, null if none
         public float totalRP;
+        /** per category (6): the techs available to research next, so the player may choose */
+        public List<List<TechChoice>> choices = new ArrayList<>();
+    }
+
+    public static class TechChoice {
+        public String id;
+        public String name;
+        public int cost;
     }
 
     public static class FleetDto {

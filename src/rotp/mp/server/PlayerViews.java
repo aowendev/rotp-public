@@ -126,10 +126,24 @@ public final class PlayerViews {
         PlayerView.TechDto t = new PlayerView.TechDto();
         t.alloc = new int[TechTree.NUM_CATEGORIES];
         t.researching = new String[TechTree.NUM_CATEGORIES];
+        t.researchingId = new String[TechTree.NUM_CATEGORIES];
         for (int i = 0; i < TechTree.NUM_CATEGORIES; i++) {
             TechCategory cat = tech.category(i);
             t.alloc[i] = cat.allocation();
+            t.researchingId[i] = cat.currentTech();
             t.researching[i] = (cat.currentTech() == null) ? null : cat.currentTechName();
+            java.util.List<PlayerView.TechChoice> choices = new java.util.ArrayList<>();
+            for (String techId : cat.techIdsAvailableForResearch()) {
+                rotp.model.tech.Tech tk = rotp.model.tech.TechLibrary.current().tech(techId);
+                if (tk == null)
+                    continue;
+                PlayerView.TechChoice ch = new PlayerView.TechChoice();
+                ch.id = techId;
+                ch.name = tk.name();
+                ch.cost = cat.costForTech(tk);
+                choices.add(ch);
+            }
+            t.choices.add(choices);
         }
         t.totalRP = tech.empire().totalPlanetaryResearch();
         return t;

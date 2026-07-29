@@ -77,6 +77,16 @@ public final class Messages {
     }
 
     /**
+     * choose which technology a research category works toward, overriding the
+     * AI's default pick. techId must be one of that category's available choices
+     * (see PlayerView.TechDto.choices).
+     */
+    public static class SetResearchChoice {
+        public int category;   // 0-5
+        public String techId;
+    }
+
+    /**
      * send ships from an orbiting fleet to another system.
      * counts is per design slot (6); null or empty deploys the whole fleet.
      */

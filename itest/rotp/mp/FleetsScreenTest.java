@@ -63,6 +63,24 @@ public class FleetsScreenTest {
     }
 
     @Test
+    void clickingASystemSetsTheDeployDestination() {
+        AtomicReference<Object> sent = new AtomicReference<>();
+        FleetsPanel panel = new FleetsPanel(sent::set);
+
+        PlayerView v = new PlayerView();
+        PlayerView.SystemDto a = new PlayerView.SystemDto();
+        a.id = 1; a.name = "Sol";
+        PlayerView.SystemDto b = new PlayerView.SystemDto();
+        b.id = 2; b.name = "Vega";
+        v.systems.add(a);
+        v.systems.add(b);
+        panel.updateFromView(v);
+
+        panel.selectDestination(2);   // as if the user clicked Vega on the map
+        assertEquals(2, panel.selectedDestinationId(), "map click set the deploy destination");
+    }
+
+    @Test
     void panelLoadsFleetsAndTransportsFromView() {
         AtomicReference<Object> sent = new AtomicReference<>();
         FleetsPanel panel = new FleetsPanel(sent::set);

@@ -16,8 +16,10 @@
 package rotp.mp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -65,6 +67,68 @@ public class ResearchScreenTest {
         ta.alloc = focus;
         assertTrue(alice.order(ta).ok, "reallocating research is accepted");
         assertEquals(60, ColonyAllocations.sum(alice.lastView.tech.alloc), "still fully allocated after the order");
+    }
+
+    @Test
+    @Timeout(180)
+    void completingResearchProducesATechNotification() throws Exception {
+        server = MpTestSupport.startServer(1);
+        alice = new Client(server.port, "Alice");
+        PlayerView v = alice.awaitView();
+        PlayerView.SystemDto home = MpTestSupport.ownColony(v);
+
+        // fund research heavily and concentrate all of it into one category so a
+        // tech completes within a bounded number of turns (certain by ~3x cost)
+        Messages.SetColonyAllocations ca = new Messages.SetColonyAllocations();
+        ca.systemId = home.id;
+        ca.alloc = new int[]{0, 0, 5, 15, 30};   // ship/def/ind/eco/tech, sum 50
+        assertTrue(alice.order(ca).ok, "set heavy research spending");
+        Messages.SetTechAllocations ta = new Messages.SetTechAllocations();
+        ta.alloc = new int[]{60, 0, 0, 0, 0, 0};   // all into Computers
+        assertTrue(alice.order(ta).ok, "concentrate research");
+
+        boolean sawTech = false;
+        for (int t = 0; t < 60 && !sawTech; t++) {
+            alice.ready();
+            if (MpTestSupport.sawNotification(alice, "TECH"))
+                sawTech = true;
+        }
+        assertTrue(sawTech, "researching a technology produced a TECH notification");
+    }
+
+    @Test
+    @Timeout(120)
+    void playerCanChooseWhatToResearch() throws Exception {
+        server = MpTestSupport.startServer(1);
+        alice = new Client(server.port, "Alice");
+        PlayerView v = alice.awaitView();
+
+        assertNotNull(v.tech.choices, "view carries research choices");
+        assertEquals(6, v.tech.choices.size(), "one choice list per category");
+
+        // find a category that offers at least one tech to research
+        int cat = -1;
+        String pickId = null;
+        for (int i = 0; i < 6; i++)
+            if (!v.tech.choices.get(i).isEmpty()) {
+                cat = i;
+                pickId = v.tech.choices.get(i).get(0).id;
+                break;
+            }
+        assumeTrue(cat >= 0, "some category offers a research choice");
+
+        Messages.SetResearchChoice rc = new Messages.SetResearchChoice();
+        rc.category = cat;
+        rc.techId = pickId;
+        assertTrue(alice.order(rc).ok, "research choice accepted");
+        assertEquals(pickId, alice.lastView.tech.researchingId[cat],
+            "the chosen tech is now this category's research target");
+
+        // an unavailable tech is rejected
+        Messages.SetResearchChoice bad = new Messages.SetResearchChoice();
+        bad.category = cat;
+        bad.techId = "not_a_real_tech";
+        assertFalse(alice.order(bad).ok, "an invalid research choice is rejected");
     }
 
     @Test

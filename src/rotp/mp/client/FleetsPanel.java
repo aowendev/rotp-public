@@ -104,6 +104,16 @@ public class FleetsPanel extends JPanel {
         setControlsEnabled(false);
     }
 
+    /** set the deploy destination to a system clicked on the galaxy map */
+    public void selectDestination(int sysId) {
+        selectById(deployDest, sysId);
+    }
+
+    /** the currently chosen deploy destination system id, or -1 */
+    public int selectedDestinationId() {
+        return selectedId(deployDest);
+    }
+
     public void updateFromView(PlayerView v) {
         this.view = v;
         if (v == null)

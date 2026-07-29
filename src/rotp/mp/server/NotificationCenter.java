@@ -75,6 +75,7 @@ public class NotificationCenter {
             if (ev != null)
                 s.diplo.put(other.id, Relations.of(ev));
         }
+        s.knownTechs.addAll(emp.tech().allKnownTechs());
         return s;
     }
 
@@ -88,6 +89,11 @@ public class NotificationCenter {
         for (int sysId : prev.ownedSystems)
             if (!cur.ownedSystems.contains(sysId))
                 out.add(note("COLONY_LOST", "Lost colony at " + sysName(emp, sysId), sysId, -1));
+
+        // technologies researched since last turn
+        for (String techId : cur.knownTechs)
+            if (!prev.knownTechs.contains(techId))
+                out.add(note("TECH", "Researched " + techName(techId), -1, -1));
 
         // first contact
         for (int empId : cur.contacted)
@@ -137,10 +143,16 @@ public class NotificationCenter {
         return (e == null) ? ("empire " + empireId) : e.name();
     }
 
+    private static String techName(String techId) {
+        rotp.model.tech.Tech t = rotp.model.tech.TechLibrary.current().tech(techId);
+        return (t == null) ? techId : t.name();
+    }
+
     private static final class Snapshot {
         final Set<Integer> ownedSystems = new HashSet<>();
         final Set<Integer> contacted = new HashSet<>();
         final Map<Integer, Relations> diplo = new HashMap<>();
+        final Set<String> knownTechs = new HashSet<>();
     }
 
     private static final class Relations {
