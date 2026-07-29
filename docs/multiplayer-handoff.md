@@ -102,10 +102,12 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
 - **Mac-port interface feel (Phase 5 browser client).** Reproduce the interaction
   behavior + keyboard shortcuts of the **1990s Macintosh port** of MOO (native Mac
   GUI: menus, windows, ⌘-shortcuts), not the DOS keyboard interface ROTP emulates.
-  **Source the exact patterns/shortcuts from an authoritative reference — do not
-  invent them.** Capture Mac-port-flavored interaction behavior in the DTO client
-  as you build screens (it's the browser blueprint) and record it in a UX spec
-  before the browser client work starts.
+  **This is now documented first-hand in [`mac-ux-spec.md`](mac-ux-spec.md)** —
+  complete menu/⌘-shortcut map + core-screen captures (`docs/mac-ux/`), read off the
+  1995 release running in an emulator. Bind those shortcuts in the browser client
+  (esp. ⌘N = Next Turn → the Ready action) and echo the Map+Info window layout.
+  Not-yet-captured screens (Fleet List, combat, council, etc.) are listed in the
+  spec's §5 for a future pass.
 
 Then Phase 2+ (reconnection, MP save/load, lobby race/color picks), Phase 3
 (interactive mid-turn prompts with turn timers), Phase 4 (internet hosting),
