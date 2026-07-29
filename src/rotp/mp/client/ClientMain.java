@@ -59,6 +59,7 @@ public class ClientMain {
         ColonyPanel colonyPanel = new ColonyPanel(order -> clientHolder[0].sendMessage(order));
         ResearchPanel researchPanel = new ResearchPanel(order -> clientHolder[0].sendMessage(order));
         FleetsPanel fleetsPanel = new FleetsPanel(order -> clientHolder[0].sendMessage(order));
+        ShipDesignPanel shipDesignPanel = new ShipDesignPanel(order -> clientHolder[0].sendMessage(order));
         JLabel status = new JLabel("Connecting to "+host+":"+port+"...");
         JButton nextTurn = new JButton("Ready");
         nextTurn.setEnabled(false);
@@ -73,6 +74,11 @@ public class ClientMain {
         fleetsWindow.add(fleetsPanel);
         fleetsWindow.setSize(480, 420);
         fleetsWindow.setLocationByPlatform(true);
+
+        JFrame shipDesignWindow = new JFrame("Ship Design");
+        shipDesignWindow.add(new javax.swing.JScrollPane(shipDesignPanel));
+        shipDesignWindow.setSize(560, 560);
+        shipDesignWindow.setLocationByPlatform(true);
 
         Runnable ready = () -> {
             nextTurn.setEnabled(false);
@@ -96,7 +102,11 @@ public class ClientMain {
         JMenuItem fleetListItem = new JMenuItem("Fleet List");
         fleetListItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, menuMask));
         fleetListItem.addActionListener(e -> fleetsWindow.setVisible(!fleetsWindow.isVisible()));
+        JMenuItem shipDesignItem = new JMenuItem("Ship Design");
+        shipDesignItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, menuMask));
+        shipDesignItem.addActionListener(e -> shipDesignWindow.setVisible(!shipDesignWindow.isVisible()));
         fleet.add(fleetListItem);
+        fleet.add(shipDesignItem);
         menuBar.add(fleet);
 
         JMenu misc = new JMenu("Misc");
@@ -126,7 +136,7 @@ public class ClientMain {
         NetClient client = new NetClient(
             URI.create("ws://"+host+":"+port),
             name,
-            msg -> SwingUtilities.invokeLater(() -> handleMessage(msg, galaxyPanel, colonyPanel, researchPanel, fleetsPanel, lastView, status, nextTurn)),
+            msg -> SwingUtilities.invokeLater(() -> handleMessage(msg, galaxyPanel, colonyPanel, researchPanel, fleetsPanel, shipDesignPanel, lastView, status, nextTurn)),
             text -> SwingUtilities.invokeLater(() -> status.setText(text)));
         clientHolder[0] = client;
 
@@ -137,6 +147,7 @@ public class ClientMain {
 
     private static void handleMessage(Object msg, GalaxyViewPanel galaxyPanel, ColonyPanel colonyPanel,
                                       ResearchPanel researchPanel, FleetsPanel fleetsPanel,
+                                      ShipDesignPanel shipDesignPanel,
                                       PlayerView[] lastView, JLabel status, JButton nextTurn) {
         if (msg instanceof Messages.Lobby) {
             Messages.Lobby lobby = (Messages.Lobby) msg;
@@ -152,6 +163,7 @@ public class ClientMain {
             colonyPanel.updateFromView(view);
             researchPanel.updateFromView(view);
             fleetsPanel.updateFromView(view);
+            shipDesignPanel.updateFromView(view);
             status.setText(view.empireName+"  -  "+view.year+" (turn "+view.turn+")");
             nextTurn.setEnabled(true);
         }
@@ -165,6 +177,9 @@ public class ClientMain {
             Messages.CommandResult cr = (Messages.CommandResult) msg;
             if (!cr.ok)
                 status.setText("Order rejected ("+cr.command+"): "+cr.text);
+        }
+        else if (msg instanceof Messages.DesignCatalog) {
+            shipDesignPanel.setCatalog((Messages.DesignCatalog) msg);
         }
         else if (msg instanceof Messages.Notifications) {
             Messages.Notifications ns = (Messages.Notifications) msg;

@@ -5,7 +5,7 @@ how to run what exists, and exactly what to do next. The full design rationale i
 in [`multiplayer-design.md`](multiplayer-design.md); this is the operational
 "pick up here" note.
 
-_Last updated: 2026-07-29, after the colony + research + fleets client screens and the Mac-port UX spec._
+_Last updated: 2026-07-29, after the colony + research + fleets + ship-design client screens and the Mac-port UX spec._
 
 ## Where we are
 
@@ -59,29 +59,33 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   contact, diplomatic status changes, and colonies gained/lost.
 - **DTO-rendered client screens**: `ClientMain` shows a clickable galaxy map
   (`GalaxyViewPanel`), a colony-management screen (`ColonyPanel`), a research
-  screen (`ResearchPanel`), and a fleets & transports screen (`FleetsPanel`) —
-  each opened from a Mac-style menu bar that `ClientMain` wires to the Mac UX
-  spec's shortcuts (⌘F Fleet List, ⌘T Technology, ⌘N Next Turn). Pure,
-  unit-tested helpers back the panels: `ColonyAllocations` (colony@50 /
-  research@60 redistribution) and `FleetView` (fleet summarization/deployability).
-  The client renders from `PlayerView` and acts via commands — **no game model on
-  the client**. Settled architecture (design doc "Client rendering"): reusing
-  ROTP's real Swing panels was rejected because a browser can use none of it.
-- Verified by `itest/rotp/mp/` (17 tests): order/isolation, design/transport,
+  screen (`ResearchPanel`), a fleets & transports screen (`FleetsPanel`), and a
+  ship-design screen (`ShipDesignPanel`, populated from the `designCatalog`
+  message) — each opened from a Mac-style menu bar that `ClientMain` wires to the
+  Mac UX spec's shortcuts (⌘F Fleet List, ⌘D Ship Design, ⌘T Technology, ⌘N Next
+  Turn). Pure, unit-tested helpers back the panels: `ColonyAllocations` (colony@50
+  / research@60 redistribution), `FleetView` (fleet summarization/deployability),
+  and `ShipDesigns` (free-slot computation). The client renders from `PlayerView`
+  and acts via commands — **no game model on the client**. Settled architecture
+  (design doc "Client rendering"): reusing ROTP's real Swing panels was rejected
+  because a browser can use none of it.
+- Verified by `itest/rotp/mp/` (21 tests): order/isolation, design/transport,
   spy/diplomacy (also assert notification delivery), and the colony / research /
-  fleets screens (redistribution, DTO load, map click hit-test, fleet
-  summarization/deployability, and the server equalizing research to sum-60 at start).
+  fleets / ship-design screens (redistribution, DTO load, map click hit-test,
+  fleet summarization/deployability, free-slot computation, catalog request, and
+  the server equalizing research to sum-60 at start).
 
 ## Do this next (in order)
 
 1. **Port the remaining core-playable screens** — the DTO-client way (render from
    `PlayerView`, act via commands; grow `rotp.mp.client` screen by screen, like
-   `ColonyPanel`/`ResearchPanel`/`FleetsPanel`; open each as a window from the menu
-   bar with its Mac ⌘-shortcut). The order set already exists for all of these:
-   - **Ship design** (⌘D): catalog → build a design (`designCatalog` /
-     `createDesign` / `scrapDesign` / `setShipBuild`).
+   the existing panels; open each as a window from the menu bar with its Mac
+   ⌘-shortcut).
    - **Empire/status overview** (Planet List ⌘P): colonies, totals,
-     contact/diplomacy from `EmpireDto`.
+     contact/diplomacy from `EmpireDto` — mostly read-only, a good next screen.
+   - **Surface `setShipBuild`** (choose which design a colony builds + build limit)
+     in `ColonyPanel` — without it, a newly created design is inert (colonies keep
+     their default). Add a design dropdown + limit to the colony screen.
    - Fleets/transports polish: per-design partial deploys (currently whole-fleet
      only) and map-click destination selection (currently a dropdown).
    Keep pure rendering-independent logic in small non-Swing classes (browser
