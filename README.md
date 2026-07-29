@@ -107,7 +107,7 @@ All orders are validated server-side against the sending player's empire; client
 - Remaining: porting the rest of the core-playable screens (fleets/transports, research, ship design, empire status); extending notification coverage (tech, combat, spy reports, GNN).
 
 **Roadmap:**
-1. **Phase 2 — full we-go multiplayer on LAN**: reconnection, saves/loads of multiplayer games, lobby polish (race/color picks).
+1. **Phase 2 — full we-go multiplayer on LAN**: a lobby that can start with the humans present and fill the rest with AI (solo host vs AI, configurable AI count); reconnection; saves/loads of multiplayer games; lobby polish (race/color picks).
 2. **Phase 3 — optional interactivity**: remote prompts for tech choices/diplomacy/council votes with turn timers; async player-to-player diplomacy.
 3. **Phase 4 — internet hosting**: persistent lobby, authentication, server deployment.
-4. **Phase 5 — browser client** speaking the same protocol.
+4. **Phase 5 — browser client** speaking the same protocol, reproducing the 1990s Macintosh port's interface feel and keyboard shortcuts.

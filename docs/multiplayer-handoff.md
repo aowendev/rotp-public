@@ -91,6 +91,22 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
    known gap: an empire met *via* a simultaneous war declaration reports only
    `CONTACT`, not the war (the war is still in `EmpireDto.atWar`).
 
+## Product requirements to keep in mind (design doc §1)
+
+- **Solo-and-AI on LAN.** A LAN game must be playable with one human vs AI, with
+  empty human slots AI-filled. *Already works engine-side* — the server owns
+  every empire and only filled slots are human (the tests run 1 human + AI
+  opponents). The remaining piece is a **Phase-2 lobby** that lets the host start
+  with whoever is present and choose the AI-opponent count, instead of waiting
+  for a fixed head-count (today the game starts only when `players=` humans join).
+- **Mac-port interface feel (Phase 5 browser client).** Reproduce the interaction
+  behavior + keyboard shortcuts of the **1990s Macintosh port** of MOO (native Mac
+  GUI: menus, windows, ⌘-shortcuts), not the DOS keyboard interface ROTP emulates.
+  **Source the exact patterns/shortcuts from an authoritative reference — do not
+  invent them.** Capture Mac-port-flavored interaction behavior in the DTO client
+  as you build screens (it's the browser blueprint) and record it in a UX spec
+  before the browser client work starts.
+
 Then Phase 2+ (reconnection, MP save/load, lobby race/color picks), Phase 3
 (interactive mid-turn prompts with turn timers), Phase 4 (internet hosting),
 Phase 5 (browser client). See design doc §7.
