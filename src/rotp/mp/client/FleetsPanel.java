@@ -55,15 +55,18 @@ public class FleetsPanel extends JPanel {
     private final DefaultListModel<String> fleetModel = new DefaultListModel<>();
     private final JList<String> fleetList = new JList<>(fleetModel);
     private final List<PlayerView.FleetDto> fleetData = new ArrayList<>();
+    private final JPanel shipCountsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+    private JSpinner[] shipSpinners = new JSpinner[0];   // one per design slot with ships
     private final JComboBox<SysItem> deployDest = new JComboBox<>();
-    private final JButton deployBtn = new JButton("Deploy whole fleet");
+    private final JButton deployBtn = new JButton("Send selected ships");
+    private final JLabel rangeWarn = new JLabel(" ");
 
     private final DefaultListModel<String> transportModel = new DefaultListModel<>();
     private final JList<String> transportList = new JList<>(transportModel);
     private final JComboBox<SysItem> transFrom = new JComboBox<>();
     private final JComboBox<SysItem> transDest = new JComboBox<>();
     private final JSpinner transSize = new JSpinner(new SpinnerNumberModel(1, 1, 999, 1));
-    private final JButton sendBtn = new JButton("Send");
+    private final JButton sendBtn = new JButton("Send colonists");
     private final JButton abortBtn = new JButton("Abort");
 
     private PlayerView view;
@@ -73,17 +76,31 @@ public class FleetsPanel extends JPanel {
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 
-        add(section("Your fleets"));
+        add(section("Send ships (scouts, warships, colony ships)"));
+        add(hint("Pick a fleet, set how many of each ship, then click a destination star."));
         fleetList.setVisibleRowCount(6);
         add(scroll(fleetList, 420, 120));
+        shipCountsPanel.setAlignmentX(LEFT_ALIGNMENT);
+        add(shipCountsPanel);
         JPanel deployRow = row();
-        deployRow.add(new JLabel("Deploy to:"));
+        deployRow.add(new JLabel("Destination:"));
         deployRow.add(deployDest);
         deployRow.add(deployBtn);
         add(deployRow);
+        rangeWarn.setAlignmentX(LEFT_ALIGNMENT);
+        rangeWarn.setFont(rangeWarn.getFont().deriveFont(Font.ITALIC, 11f));
+        add(rangeWarn);
+
+        // rebuild the per-ship-type spinners whenever the selected fleet changes
+        fleetList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting())
+                rebuildShipCounts();
+        });
+        // recheck range whenever the destination changes
+        deployDest.addActionListener(e -> updateRangeWarning());
 
         add(javax.swing.Box.createVerticalStrut(10));
-        add(section("Population transports (in flight)"));
+        add(section("Move colonists (population between your colonies)"));
         transportList.setVisibleRowCount(4);
         add(scroll(transportList, 420, 80));
         JPanel sendRow = row();
@@ -129,6 +146,9 @@ public class FleetsPanel extends JPanel {
         }
         if (prevFleet >= 0 && prevFleet < fleetModel.size())
             fleetList.setSelectedIndex(prevFleet);
+        else if (fleetModel.size() > 0)
+            fleetList.setSelectedIndex(0);   // pre-select so a fleet is ready to send
+        rebuildShipCounts();
 
         // transports in flight
         transportModel.clear();
@@ -149,21 +169,109 @@ public class FleetsPanel extends JPanel {
         setControlsEnabled(true);
     }
 
-    private void deploy() {
-        int idx = fleetList.getSelectedIndex();
-        if (idx < 0 || idx >= fleetData.size())
+    /** rebuild the per-design spinners for the currently selected fleet */
+    private void rebuildShipCounts() {
+        shipCountsPanel.removeAll();
+        PlayerView.FleetDto f = selectedFleet();
+        shipSpinners = (f == null) ? new JSpinner[0] : new JSpinner[f.counts.length];
+        if (f != null) {
+            for (int slot = 0; slot < f.counts.length; slot++) {
+                int have = f.counts[slot];
+                if (have <= 0)
+                    continue;
+                // default to the full count, so leaving it alone sends everything
+                JSpinner sp = new JSpinner(new SpinnerNumberModel(have, 0, have, 1));
+                sp.addChangeListener(e -> updateRangeWarning());
+                shipSpinners[slot] = sp;
+                shipCountsPanel.add(new JLabel(designName(view, slot) + ":"));
+                shipCountsPanel.add(sp);
+            }
+        }
+        shipCountsPanel.revalidate();
+        shipCountsPanel.repaint();
+        updateRangeWarning();
+    }
+
+    /** warn if any selected ship type can't reach the chosen destination */
+    private void updateRangeWarning() {
+        PlayerView.FleetDto f = selectedFleet();
+        SysItem dest = (SysItem) deployDest.getSelectedItem();
+        if (view == null || f == null || dest == null) {
+            rangeWarn.setText(" ");
             return;
-        PlayerView.FleetDto f = fleetData.get(idx);
-        if (!FleetView.deployable(f))
+        }
+        float dist = systemDistance(dest.id);
+        java.util.List<String> tooFar = new java.util.ArrayList<>();
+        for (int slot = 0; slot < f.counts.length; slot++) {
+            if (shipSpinners[slot] == null)
+                continue;
+            if (((Integer) shipSpinners[slot].getValue()) <= 0)
+                continue;
+            int range = designRange(slot);
+            if (range >= 0 && dist > range)
+                tooFar.add(designName(view, slot));
+        }
+        if (tooFar.isEmpty()) {
+            rangeWarn.setForeground(java.awt.Color.GRAY);
+            rangeWarn.setText(String.format("Destination %.0f ly away — in range.", dist));
+        }
+        else {
+            rangeWarn.setForeground(new java.awt.Color(170, 40, 40));
+            rangeWarn.setText("Out of range for: " + String.join(", ", tooFar));
+        }
+    }
+
+    private float systemDistance(int sysId) {
+        if (view != null)
+            for (PlayerView.SystemDto s : view.systems)
+                if (s.id == sysId)
+                    return s.distance;
+        return 0f;
+    }
+
+    private int designRange(int slot) {
+        if (view != null && view.designs != null)
+            for (PlayerView.DesignDto d : view.designs)
+                if (d.slot == slot)
+                    return d.range;
+        return -1;
+    }
+
+    private PlayerView.FleetDto selectedFleet() {
+        int idx = fleetList.getSelectedIndex();
+        return (idx < 0 || idx >= fleetData.size()) ? null : fleetData.get(idx);
+    }
+
+    private void deploy() {
+        PlayerView.FleetDto f = selectedFleet();
+        if (f == null || !FleetView.deployable(f))
             return;
         SysItem dest = (SysItem) deployDest.getSelectedItem();
         if (dest == null)
             return;
+        int[] counts = new int[f.counts.length];
+        int total = 0;
+        for (int slot = 0; slot < counts.length; slot++) {
+            if (shipSpinners[slot] != null)
+                counts[slot] = (Integer) shipSpinners[slot].getValue();
+            total += counts[slot];
+        }
+        if (total <= 0)
+            return;   // nothing selected to send
         Messages.DeployFleet msg = new Messages.DeployFleet();
         msg.fromSystemId = f.atSystemId;
         msg.destSystemId = dest.id;
-        msg.counts = null;   // whole fleet
+        // per-design counts; the server treats a full count as a whole-fleet send
+        msg.counts = counts;
         orderSender.accept(msg);
+    }
+
+    private static String designName(PlayerView v, int slot) {
+        if (v != null && v.designs != null)
+            for (PlayerView.DesignDto d : v.designs)
+                if (d.slot == slot)
+                    return d.name;
+        return "Design " + slot;
     }
 
     private void sendTransports() {
@@ -239,6 +347,14 @@ public class FleetsPanel extends JPanel {
     private static JLabel section(String text) {
         JLabel l = new JLabel(text);
         l.setFont(l.getFont().deriveFont(Font.BOLD, 13f));
+        l.setAlignmentX(LEFT_ALIGNMENT);
+        return l;
+    }
+
+    private static JLabel hint(String text) {
+        JLabel l = new JLabel(text);
+        l.setFont(l.getFont().deriveFont(Font.ITALIC, 11f));
+        l.setForeground(java.awt.Color.GRAY);
         l.setAlignmentX(LEFT_ALIGNMENT);
         return l;
     }

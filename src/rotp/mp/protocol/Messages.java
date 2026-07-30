@@ -42,6 +42,27 @@ public final class Messages {
         public int empireId;
         public String playerName;
         public boolean connected;
+        public String raceId;     // race this player has picked in the lobby
+    }
+
+    /** one selectable race, for the lobby race picker */
+    public static class RaceInfo {
+        public String id;
+        public String name;
+        public String description;
+    }
+
+    /** server -> client: the races a player may pick, sent once on join */
+    public static class RaceOptions {
+        public List<RaceInfo> races = new ArrayList<>();
+    }
+
+    /**
+     * client -> server: pick a race in the lobby. Rejected (via error/lobby
+     * reload) if the race is already taken by another connected player.
+     */
+    public static class PickRace {
+        public String raceId;
     }
 
     /** server -> client: acknowledges a join, before the lobby roster */
@@ -62,6 +83,18 @@ public final class Messages {
     /** server -> client: game created, you are this empire */
     public static class GameStarted {
         public int empireId;
+    }
+
+    /**
+     * server -> client: the game has ended for this empire. Sent once, when the
+     * empire is defeated (its empire goes extinct) or the game reaches a
+     * win/loss condition. won=true only for the empire the engine evaluated as
+     * the victor.
+     */
+    public static class GameOver {
+        public boolean won;
+        public String reason;   // MILITARY, NO_COLONIES, DIPLOMATIC, DEFEATED, GAME_OVER, ...
+        public String text;     // human-readable
     }
 
     /** client -> server: we-go ready flag; turn resolves when all players are ready */

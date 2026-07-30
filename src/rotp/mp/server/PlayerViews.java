@@ -85,9 +85,14 @@ public final class PlayerViews {
             sd.ownerId = emp.sv.empId(i);
             sd.colonized = emp.sv.isColonized(i);
             sd.population = emp.sv.population(i);
+            sd.distance = emp.sv.distance(i);
+            sd.inShipRange = emp.sv.inShipRange(i);
             if (sd.scouted) {
                 PlanetType pt = emp.sv.planetType(i);
                 sd.planetType = (pt == null) ? null : pt.key();
+                sd.planetTypeName = (pt == null) ? null : pt.name();
+                sd.maxSize = emp.sv.currentSize(i);
+                sd.canColonize = (pt != null) && !sd.colonized && emp.canColonize(pt);
             }
             if ((sys.empire() == emp) && sys.isColonized())
                 sd.colony = colonyDto(sys.colony());
@@ -180,6 +185,7 @@ public final class PlayerViews {
             dto.totalSpace = d.totalSpace();
             dto.availableSpace = d.availableSpace();
             dto.colonyShip = d.hasColonySpecial();
+            dto.range = d.range();
             out.add(dto);
         }
         return out;

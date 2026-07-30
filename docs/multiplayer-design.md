@@ -60,9 +60,12 @@ Single-player ROTP conflates two questions in `isAIControlled()`. Multiplayer se
 |---|---|---|
 | `hello` | C→S | Join: protocol version + player name |
 | `joined` | S→C | Ack a join: your empire id + whether you are the host |
-| `lobby` | S→C | Player roster, on every change |
+| `raceOptions` | S→C | Selectable races (id, name, trait), sent once on join |
+| `pickRace` | C→S | Pick a lobby race; refused if another player already holds it |
+| `lobby` | S→C | Player roster (name + chosen race per slot), on every change |
 | `startGame` | C→S | Host starts now with the humans present, filling the rest with AI (chooses the AI-opponent count) |
 | `gameStarted` | S→C | Your empire id |
+| `gameOver` | S→C | Game ended for this empire: won/lost + reason |
 | `view` | S→C | `PlayerView` snapshot (start, post-turn, post-order) |
 | `setColonyAlloc` | C→S | 5 categories, ticks sum to 50, locked honored |
 | `setTechAlloc` | C→S | 6 categories, 0–60 ticks each |

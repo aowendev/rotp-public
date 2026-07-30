@@ -75,6 +75,11 @@ public final class PlayerView {
         public String name;        // empty until scouted
         public int ownerId;        // -1 if unowned or unknown
         public String planetType;  // key like "PLANET_TERRAN", null until scouted
+        public String planetTypeName; // readable, e.g. "Terran"; null until scouted
+        public int maxSize;        // planet population capacity, 0 until scouted
+        public boolean canColonize;// your race+tech can settle it now (scouted, habitable, empty)
+        public float distance;     // light-years from your empire (fog-of-war aware)
+        public boolean inShipRange;// within your base ship range (most ships, incl. colony ships)
         public boolean colonized;  // as known to this player
         public int population;     // last known
         public ColonyDto colony;   // full detail, own colonies only
@@ -125,6 +130,7 @@ public final class PlayerView {
         public float totalSpace;
         public float availableSpace;
         public boolean colonyShip;
+        public int range;            // how far this design can travel (light-years)
     }
 
     /** own population transports in flight */

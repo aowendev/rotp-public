@@ -60,9 +60,12 @@ Messages are JSON over WebSocket in a `{"t": <type>, "d": <payload>}` envelope; 
 |---|---|---|
 | `hello` | client → server | Join with protocol version + player name |
 | `joined` | server → client | Acknowledges the join: the client's empire id and whether it's the host |
-| `lobby` | server → client | Roster of joined players, sent on every change |
+| `raceOptions` | server → client | The selectable races (id, name, trait), sent once on join |
+| `pickRace` | client → server | Pick a race in the lobby; rejected if another player already holds it |
+| `lobby` | server → client | Roster of joined players (name + chosen race per slot), sent on every change |
 | `startGame` | client → server | Host starts the game with the humans present, filling the rest with AI (picks the AI-opponent count) |
 | `gameStarted` | server → client | Game created; tells the client its empire id |
+| `gameOver` | server → client | The game ended for this empire: won/lost plus a reason (military, diplomatic, no-colonies, defeated, …) |
 | `view` | server → client | `PlayerView`: everything this empire knows — systems (fog-of-war), own colonies (spending, pop, factories, bases, production, pending transports, build choice), research state, fleets, in-flight transports, ship design slots (hull, space, colony-ship flag). Sent on game start, after every turn, and after each accepted order |
 | `setColonyAlloc` | client → server | Colony spending: 5 categories (ship/def/ind/eco/tech), ticks summing to 50, locked categories honored |
 | `setTechAlloc` | client → server | Research allocation: 6 categories, 0–60 ticks each |
@@ -110,9 +113,16 @@ All orders are validated server-side against the sending player's empire; client
 - Done: the core-playable set of DTO-rendered client screens — a clickable galaxy map (click to set a fleet destination), colony management (spending sliders → `setColonyAlloc`, plus choosing which design the colony builds → `setShipBuild`), research (allocation sliders → `setTechAllocations` + per-category research-target choice), fleets & transports (deploy fleets, send/abort transports), ship design (create/scrap from the design catalog), and a read-only empire overview (colonies, totals, contact/diplomacy) — all opened from a Mac-style menu bar wiring the Mac-port ⌘-shortcuts (⌘P Planet List, ⌘F Fleet List, ⌘D Ship Design, ⌘T Technology, ⌘N Next Turn). The full economy→build→expand loop is clickable end-to-end; a game is genuinely playable over the wire. The client renders from `PlayerView` and acts via commands, holding no game model, so it doubles as the blueprint for the eventual browser client (see the design doc's "Client rendering" note).
 - Deferred polish (not blockers): per-design partial fleet deploys, and broader notification coverage (combat/spy/GNN).
 
+**Phase 1.5 — human-validated full playthrough (current focus):**
+- Done: lobby race selection — each player is defaulted to a distinct race on join and can pick any free one (`raceOptions`/`pickRace`); duplicates are refused, and each human's pick lands on their own empire when the game starts. The homeworld name follows the race automatically (the galaxy factory names it from the race), so this fixes homeworld naming too.
+- Done: victory/defeat signaling — after each turn the server checks the engine's win/loss state and sends a `gameOver` message (won/lost + reason), so the client shows the outcome and stops resolving turns. The engine evaluates victory from the player's (empire 0's) perspective, which is authoritative for the solo game; any human's defeat is also detected per-empire via extinction. (Per-empire victory for multi-human games is a deeper engine change, deferred.)
+- Done: usable fleet dispatch — Colony/System/Fleets docked as tabs; click a star to target it; a per-ship-type picker sends scouts/colony ships individually from the shared home stack; a **System** info tab reports planet type, capacity, ownership, and whether you can colonize; and ship range is shown three ways (map tint for out-of-range stars, a System-tab range line, and a live out-of-range warning in the dispatch panel that names the ship type). Colony ships auto-settle on arrival.
+- Also fixed while validating: a turn-advance lockup (the Next Turn button stuck disabled after turn 1), ROTP's turn-1 scout auto-launch (recalled so you control the opening move), and a stale homeworld/leader name after race selection.
+- Remaining: one human sign-off playthrough to final win/loss.
+
 **Phase 2 — LAN & session completeness (in progress):**
 - Done: a lobby that starts with the humans present and fills the rest with AI — the host chooses the AI-opponent count (so a lone player can play against AI on a LAN); only the host may start.
-- Remaining: confirm LAN play across machines; reconnection; multiplayer save/load; lobby race/color picks.
+- Remaining: confirm LAN play across machines; reconnection; multiplayer save/load; lobby color picks (race picks done in Phase 1.5).
 
 **Roadmap:**
 1. **Phase 1.5 — human-validated full playthrough (current focus)**: a person plays a complete solo game (start → win/loss) in the reference client; fix every gap that blocks completion, API-completeness-first (race/color selection, homeworld naming, usable fleet dispatch, victory/defeat signaling), keeping the Java UI minimal — real UX is the browser client's job.

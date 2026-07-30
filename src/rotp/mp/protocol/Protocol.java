@@ -41,6 +41,9 @@ public final class Protocol {
         register("joined",         Messages.Joined.class);
         register("startGame",      Messages.StartGame.class);
         register("gameStarted",    Messages.GameStarted.class);
+        register("gameOver",       Messages.GameOver.class);
+        register("raceOptions",    Messages.RaceOptions.class);
+        register("pickRace",       Messages.PickRace.class);
         register("ready",          Messages.Ready.class);
         register("turnStatus",     Messages.TurnStatus.class);
         register("error",          Messages.Error.class);

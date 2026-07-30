@@ -43,6 +43,7 @@ public class GalaxyViewPanel extends JPanel {
     };
 
     private static final int MARGIN = 30;
+    private static final Color OUT_OF_RANGE = new Color(170, 70, 70);
 
     private PlayerView view;
     private float scale = 1f;
@@ -129,10 +130,19 @@ public class GalaxyViewPanel extends JPanel {
                 g.setColor(empireColor(v, s.ownerId));
                 g.drawOval(x-6, y-6, 12, 12);
             }
-            g.setColor(s.scouted ? Color.WHITE : Color.GRAY);
+            // stars beyond your base ship range are tinted red: your colony
+            // ships (and most ships) can't reach them yet. Extended-range scouts
+            // still can — the System and Fleets panels spell out per-ship range.
+            Color dot = !s.inShipRange ? OUT_OF_RANGE
+                      : s.scouted      ? Color.WHITE
+                                       : Color.GRAY;
+            g.setColor(dot);
             g.fillOval(x-2, y-2, 5, 5);
 
-            if (s.scouted && !s.name.isEmpty()) {
+            // a scouted star shows its name; unscouted stars stay anonymous dots
+            // you can still click to target (see the selection ring), so scouts
+            // can be sent into the unknown graphically.
+            if (s.scouted && (s.name != null) && !s.name.isEmpty()) {
                 g.setColor(Color.LIGHT_GRAY);
                 g.drawString(s.name, x+8, y+4);
             }
@@ -141,6 +151,13 @@ public class GalaxyViewPanel extends JPanel {
         g.setColor(Color.WHITE);
         g.setFont(new Font("SansSerif", Font.BOLD, 13));
         g.drawString(v.empireName+" ("+v.raceName+")  -  "+v.year, 10, 18);
+
+        // legend for the range tint
+        g.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        g.setColor(OUT_OF_RANGE);
+        g.fillOval(10, getHeight()-16, 6, 6);
+        g.setColor(Color.LIGHT_GRAY);
+        g.drawString("beyond ship range", 22, getHeight()-10);
     }
 
     private static Color empireColor(PlayerView v, int empireId) {

@@ -63,12 +63,24 @@ public class GameServer extends WebSocketServer {
     private volatile boolean starting = false;
     private volatile boolean gameStarted = false;
     private volatile boolean turnRunning = false;
+    private volatile boolean gameEnded = false;   // a win/loss was reached and signalled
 
     private static class Player {
         String name;
         int empireId = -1;
         boolean ready = false;
+        String raceId;   // race picked in the lobby (defaulted on join)
     }
+
+    /**
+     * The player-selectable races, mirroring MOO1GameOptions.startingRaceOptions().
+     * Kept as a constant so the lobby can offer races before any game options
+     * object exists.
+     */
+    private static final String[] STARTING_RACE_IDS = {
+        "RACE_HUMAN", "RACE_ALKARI", "RACE_SILICOID", "RACE_MRRSHAN", "RACE_KLACKON",
+        "RACE_MEKLAR", "RACE_PSILON", "RACE_DARLOK", "RACE_SAKKRA", "RACE_BULRATHI"
+    };
 
     public GameServer(int port, int humanSlots) {
         this(port, humanSlots, null);
@@ -158,6 +170,8 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "declareWar", (Messages.DeclareWar) msg);
         else if (msg instanceof Messages.DesignCatalog)
             handleDesignCatalog(conn);
+        else if (msg instanceof Messages.PickRace)
+            handlePickRace(conn, (Messages.PickRace) msg);
         else if (msg instanceof Messages.StartGame)
             handleStartGame(conn, (Messages.StartGame) msg);
         else
@@ -180,16 +194,18 @@ public class GameServer extends WebSocketServer {
         Player p = new Player();
         p.name = (hello.playerName == null || hello.playerName.isEmpty()) ? "Player" : hello.playerName;
         p.empireId = players.size();   // slot order for now
+        p.raceId = firstFreeRace();    // a distinct race per player by default
         players.put(conn, p);
         if (hostConn == null)
             hostConn = conn;   // the first player to join is the host
         System.out.println("[server] "+p.name+" joined as empire "+p.empireId
-            + (conn == hostConn ? " (host)" : ""));
+            + (conn == hostConn ? " (host)" : "") + ", race "+p.raceId);
 
         Messages.Joined joined = new Messages.Joined();
         joined.empireId = p.empireId;
         joined.host = (conn == hostConn);
         send(conn, Protocol.encode(joined));
+        send(conn, Protocol.encode(raceOptions()));
         broadcastLobby(p.name+" joined");
 
         // auto-start once every human slot is filled (ruleset default AI count)
@@ -212,6 +228,69 @@ public class GameServer extends WebSocketServer {
             return;
         }
         beginStart(msg.aiOpponents);
+    }
+
+    /** a player picks a race in the lobby; rejected if another player already holds it */
+    private synchronized void handlePickRace(WebSocket conn, Messages.PickRace msg) {
+        if (gameStarted || starting) {
+            send(conn, error("Game already starting; race is locked"));
+            return;
+        }
+        Player p = players.get(conn);
+        if (p == null)
+            return;
+        String raceId = msg.raceId;
+        if ((raceId == null) || !isStartingRace(raceId)) {
+            send(conn, error("Unknown race: "+raceId));
+            send(conn, Protocol.encode(buildLobby(null)));   // resync the picker
+            return;
+        }
+        for (Player other : players.values()) {
+            if ((other != p) && raceId.equals(other.raceId)) {
+                send(conn, error(other.name+" already chose "+raceId));
+                send(conn, Protocol.encode(buildLobby(null)));   // resync the picker
+                return;
+            }
+        }
+        p.raceId = raceId;
+        System.out.println("[server] "+p.name+" picked race "+raceId);
+        broadcastLobby(p.name+" chose "+raceId);
+    }
+
+    private static boolean isStartingRace(String raceId) {
+        for (String id : STARTING_RACE_IDS)
+            if (id.equals(raceId))
+                return true;
+        return false;
+    }
+
+    /** first starting race not already held by a connected player (assumes callers hold the monitor) */
+    private String firstFreeRace() {
+        for (String id : STARTING_RACE_IDS) {
+            boolean taken = false;
+            for (Player p : players.values()) {
+                if (id.equals(p.raceId)) {
+                    taken = true;
+                    break;
+                }
+            }
+            if (!taken)
+                return id;
+        }
+        return STARTING_RACE_IDS[0];   // more players than races: fall back (shouldn't happen)
+    }
+
+    private Messages.RaceOptions raceOptions() {
+        Messages.RaceOptions opts = new Messages.RaceOptions();
+        for (String id : STARTING_RACE_IDS) {
+            rotp.model.empires.Race r = rotp.model.empires.Race.keyed(id);
+            Messages.RaceInfo info = new Messages.RaceInfo();
+            info.id = id;
+            info.name = (r == null) ? id : r.setupName();
+            info.description = (r == null) ? "" : r.description1;
+            opts.races.add(info);
+        }
+        return opts;
     }
 
     /** guard so the game is generated exactly once, off the WebSocket thread */
@@ -242,6 +321,32 @@ public class GameServer extends WebSocketServer {
         opponents = Math.max(1, Math.min(opponents, options.maximumOpponentsOptions()));
         options.selectedNumberOpponents(opponents);
         System.out.println("[server] " + humans + " human(s) + " + opponents + " AI opponent(s)");
+
+        // apply each human's lobby race pick. Empire 0 (host) is the "player";
+        // the other humans occupy the first opponent slots. Any opponent slot we
+        // don't set stays null, so GalaxyFactory fills it with a random unused
+        // race, avoiding collisions with the races we pin here.
+        synchronized (this) {
+            for (Player p : players.values()) {
+                if (p.raceId == null)
+                    continue;
+                if (p.empireId == 0) {
+                    options.selectedPlayerRace(p.raceId);
+                    // selectedPlayerRace() changes the race but not the player's
+                    // homeworld/leader names, which the setup UI would normally
+                    // refresh. Left stale they keep the initial default race's
+                    // values (e.g. a Bulrathi homeworld still named "Kholdan").
+                    // Clearing the homeworld name makes the galaxy factory name it
+                    // from the chosen race; reset the leader to a race-appropriate one.
+                    rotp.model.empires.Race r = rotp.model.empires.Race.keyed(p.raceId);
+                    options.selectedHomeWorldName("");
+                    if (r != null)
+                        options.selectedLeaderName(r.randomLeaderName());
+                }
+                else if (p.empireId - 1 < options.selectedOpponentRaces().length)
+                    options.selectedOpponentRace(p.empireId - 1, p.raceId);
+            }
+        }
         GameSession.instance().startGame(options);
 
         synchronized (this) {
@@ -255,6 +360,10 @@ public class GameServer extends WebSocketServer {
                         // the AI that would set it is intentionally gated off. Give
                         // them a sensible 100%-allocated even split up front.
                         emp.tech().equalizeAllocations();
+                        // ROTP auto-launches a new empire's scouts on turn 1; pull
+                        // them back so the remote human keeps full manual control of
+                        // the opening move (e.g. sending the colony ship instead).
+                        recallStartingFleets(emp);
                         // baseline so turn-1 state isn't reported as "news"
                         notiCenter.seed(emp);
                     }
@@ -273,6 +382,37 @@ public class GameServer extends WebSocketServer {
         }
         broadcastViews();
         broadcastTurnStatus("Awaiting orders");
+    }
+
+    /**
+     * Consolidate a new empire's not-yet-moved fleets back into orbit at the
+     * homeworld. ROTP auto-dispatches the starting scouts during galaxy
+     * generation (a single-player convenience); a remote human wants to make
+     * the opening move themselves. Safe only at game start: no turn has
+     * processed, so every fleet is still un-launched and sitting at home.
+     */
+    private void recallStartingFleets(Empire emp) {
+        int home = emp.homeSysId();
+        StarSystem homeSys = galaxy().system(home);
+        ShipFleet homeFleet = galaxy().ships.orbitingFleet(emp.id, home);
+        for (ShipFleet f : new java.util.ArrayList<>(galaxy().ships.allFleets(emp.id))) {
+            if ((f == homeFleet) || f.launched() || !f.deployed())
+                continue;   // leave already-moving fleets and the orbiting home fleet
+            if (homeFleet == null) {
+                f.arrive(homeSys, false);   // no orbiting fleet yet: this becomes it
+                homeFleet = f;
+                continue;
+            }
+            for (int i = 0; i < ShipDesignLab.MAX_DESIGNS; i++) {
+                int n = f.num(i);
+                if (n > 0) {
+                    homeFleet.num(i, homeFleet.num(i) + n);
+                    f.num(i, 0);
+                }
+            }
+            galaxy().ships.deleteFleet(f);
+        }
+        emp.setVisibleShips(home);
     }
 
     // ---- we-go readiness ----
@@ -294,7 +434,7 @@ public class GameServer extends WebSocketServer {
 
     private void maybeRunTurn() {
         synchronized (this) {
-            if (!gameStarted || turnRunning || players.isEmpty())
+            if (!gameStarted || turnRunning || gameEnded || players.isEmpty())
                 return;
             for (Player p : players.values())
                 if (!p.ready)
@@ -322,11 +462,16 @@ public class GameServer extends WebSocketServer {
             }
             broadcastNotifications();
             broadcastViews();
-            broadcastTurnStatus("Awaiting orders");
+            checkGameOver();
         }
         finally {
             turnRunning = false;
         }
+        // must run after turnRunning is cleared: this status reports processing,
+        // and the client re-enables the Next Turn button only when processing is
+        // false. Broadcasting it while turnRunning was still true left the button
+        // stuck disabled on every turn after the first.
+        broadcastTurnStatus(gameEnded ? "Game over" : "Awaiting orders");
     }
 
     // ---- orders ----
@@ -808,6 +953,71 @@ public class GameServer extends WebSocketServer {
         return null;
     }
 
+    // ---- game over ----
+
+    /**
+     * After a turn, tell each empire whether it won, lost, or was destroyed.
+     * The engine's global GameStatus is evaluated from empire 0's perspective
+     * (the "player"), so its win/loss is authoritative for empire 0 and for the
+     * solo game. Any other human's *defeat* is still detected per-empire via
+     * extinction. Per-empire victory for multi-human games needs a deeper engine
+     * change and is deferred.
+     */
+    private void checkGameOver() {
+        if (gameEnded)
+            return;
+        rotp.model.game.GameStatus st;
+        synchronized (gameLock) {
+            st = GameSession.instance().status();
+        }
+        boolean over = !st.inProgress();
+        synchronized (this) {
+            for (Map.Entry<WebSocket, Player> e : players.entrySet()) {
+                Empire emp = galaxy().empire(e.getValue().empireId);
+                boolean extinct = (emp == null) || emp.extinct();
+                Messages.GameOver go = null;
+                if ((e.getValue().empireId == 0) && over)
+                    go = gameOverForPlayer(st);
+                else if (extinct)
+                    go = gameOver(false, "DEFEATED", "Your empire has been destroyed.");
+                else if (over)
+                    go = gameOver(false, "GAME_OVER", "The game has ended.");
+                if (go != null)
+                    send(e.getKey(), Protocol.encode(go));
+            }
+        }
+        if (over) {
+            gameEnded = true;   // a win/loss was reached; stop resolving turns
+            System.out.println("[server] game over ("
+                + (st.won() ? "player won" : st.lost() ? "player lost" : "ended") + ")");
+        }
+    }
+
+    private static Messages.GameOver gameOverForPlayer(rotp.model.game.GameStatus st) {
+        if (st.wonMilitary())          return gameOver(true, "MILITARY", "Victory! You have conquered the galaxy.");
+        if (st.wonMilitaryAlliance())  return gameOver(true, "MILITARY_ALLIANCE", "Victory! Your alliance rules the galaxy.");
+        if (st.wonDiplomatic())        return gameOver(true, "DIPLOMATIC", "Victory! The Galactic Council has elected you.");
+        if (st.wonCouncilAlliance())   return gameOver(true, "COUNCIL_ALLIANCE", "Victory! Your alliance holds the council.");
+        if (st.wonNewRepublic())       return gameOver(true, "NEW_REPUBLIC", "Victory! The New Republic prevails.");
+        if (st.wonRebellion())         return gameOver(true, "REBELLION", "Victory! Your rebellion has triumphed.");
+        if (st.wonRebellionAlliance()) return gameOver(true, "REBELLION_ALLIANCE", "Victory! Your rebel alliance has triumphed.");
+        if (st.lostNoColonies())       return gameOver(false, "NO_COLONIES", "Defeat. Your last colony is gone.");
+        if (st.lostMilitary())         return gameOver(false, "MILITARY", "Defeat. Your empire has been conquered.");
+        if (st.lostDiplomatic())       return gameOver(false, "DIPLOMATIC", "Defeat. The Galactic Council elected another leader.");
+        if (st.lostOverthrown())       return gameOver(false, "OVERTHROWN", "Defeat. You have been overthrown.");
+        if (st.lostNewRepublic())      return gameOver(false, "NEW_REPUBLIC", "Defeat. The New Republic has fallen without you.");
+        if (st.lostRebellion())        return gameOver(false, "REBELLION", "Defeat. The rebellion succeeded against you.");
+        return gameOver(false, "GAME_OVER", "The game has ended.");
+    }
+
+    private static Messages.GameOver gameOver(boolean won, String reason, String text) {
+        Messages.GameOver go = new Messages.GameOver();
+        go.won = won;
+        go.reason = reason;
+        go.text = text;
+        return go;
+    }
+
     // ---- outbound ----
 
     /** per-empire notifications for what changed this turn, sent before the fresh view */
@@ -859,6 +1069,10 @@ public class GameServer extends WebSocketServer {
     }
 
     private synchronized void broadcastLobby(String message) {
+        broadcastAll(Protocol.encode(buildLobby(message)));
+    }
+
+    private synchronized Messages.Lobby buildLobby(String message) {
         Messages.Lobby lobby = new Messages.Lobby();
         lobby.message = message;
         for (Player p : players.values()) {
@@ -866,9 +1080,10 @@ public class GameServer extends WebSocketServer {
             slot.empireId = p.empireId;
             slot.playerName = p.name;
             slot.connected = true;
+            slot.raceId = p.raceId;
             lobby.slots.add(slot);
         }
-        broadcastAll(Protocol.encode(lobby));
+        return lobby;
     }
 
     private synchronized void broadcastAll(String json) {

@@ -20,13 +20,16 @@ import java.awt.Toolkit;
 import java.awt.event.KeyEvent;
 import java.net.URI;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
+import javax.swing.JTabbedPane;
 import javax.swing.KeyStroke;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingUtilities;
@@ -59,24 +62,32 @@ public class ClientMain {
 
         GalaxyViewPanel galaxyPanel = new GalaxyViewPanel();
         ColonyPanel colonyPanel = new ColonyPanel(order -> clientHolder[0].sendMessage(order));
+        SystemInfoPanel systemInfoPanel = new SystemInfoPanel();
         ResearchPanel researchPanel = new ResearchPanel(order -> clientHolder[0].sendMessage(order));
         FleetsPanel fleetsPanel = new FleetsPanel(order -> clientHolder[0].sendMessage(order));
         ShipDesignPanel shipDesignPanel = new ShipDesignPanel(order -> clientHolder[0].sendMessage(order));
         EmpirePanel empirePanel = new EmpirePanel();
         JLabel status = new JLabel("Connecting to "+host+":"+port+"...");
-        JButton nextTurn = new JButton("Ready");
+        JButton nextTurn = new JButton("Next Turn ▶");
+        nextTurn.setToolTipText("Submit your orders (if any) and advance the turn (⌘N)");
         nextTurn.setEnabled(false);
+
+        // Colony + Fleets are docked as tabs on the right of the main window, so
+        // fleet dispatch is always visible (not hidden in a separate window):
+        // click a star on the map to target it, then Send the fleet there.
+        JTabbedPane eastTabs = new JTabbedPane();
+        eastTabs.addTab("Colony", colonyPanel);
+        eastTabs.addTab("System", new JScrollPane(systemInfoPanel));
+        eastTabs.addTab("Fleets", new JScrollPane(fleetsPanel));
+        final int COLONY_TAB = 0;
+        final int SYSTEM_TAB = 1;
+        final int FLEETS_TAB = 2;
 
         // each screen opens as its own window (like the Mac port)
         JFrame researchWindow = new JFrame("Research");
         researchWindow.add(researchPanel);
         researchWindow.setSize(470, 320);
         researchWindow.setLocationByPlatform(true);
-
-        JFrame fleetsWindow = new JFrame("Fleets & Transports");
-        fleetsWindow.add(fleetsPanel);
-        fleetsWindow.setSize(480, 420);
-        fleetsWindow.setLocationByPlatform(true);
 
         JFrame shipDesignWindow = new JFrame("Ship Design");
         shipDesignWindow.add(new javax.swing.JScrollPane(shipDesignPanel));
@@ -94,13 +105,23 @@ public class ClientMain {
             clientHolder[0].sendReady(true);
         };
 
-        // clicking a system opens your colony there (if any) and sets it as the
-        // fleets screen's deploy destination
+        // clicking a system targets it: it becomes the fleet-deploy destination
+        // and (if it is one of your colonies) opens in the Colony tab. Clicking
+        // one of your own colonies shows the Colony tab; clicking anywhere else
+        // jumps to the Fleets tab, ready to send a fleet to the star you picked.
         galaxyPanel.onSystemClicked(sysId -> {
             PlayerView v = lastView[0];
             if ((v != null) && (sysId >= 0)) {
                 colonyPanel.showColony(sysId, v);
+                systemInfoPanel.show(sysId, v);
                 fleetsPanel.selectDestination(sysId);
+                // your colony -> Colony controls; a scouted star -> System info
+                // (what's there / can I colonize); an unexplored dot -> Fleets
+                // (send a scout there).
+                int tab = isOwnColony(v, sysId) ? COLONY_TAB
+                        : isScouted(v, sysId)   ? SYSTEM_TAB
+                        : FLEETS_TAB;
+                eastTabs.setSelectedIndex(tab);
             }
         });
 
@@ -119,7 +140,7 @@ public class ClientMain {
         JMenu fleet = new JMenu("Fleet");
         JMenuItem fleetListItem = new JMenuItem("Fleet List");
         fleetListItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, menuMask));
-        fleetListItem.addActionListener(e -> fleetsWindow.setVisible(!fleetsWindow.isVisible()));
+        fleetListItem.addActionListener(e -> eastTabs.setSelectedIndex(FLEETS_TAB));
         JMenuItem shipDesignItem = new JMenuItem("Ship Design");
         shipDesignItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, menuMask));
         shipDesignItem.addActionListener(e -> shipDesignWindow.setVisible(!shipDesignWindow.isVisible()));
@@ -154,7 +175,28 @@ public class ClientMain {
             startBtn.setEnabled(false);
             status.setText("Starting game...");
         });
+        // race picker (all players): shown once the server sends the race list,
+        // hidden on game start. Preselected to this player's default race.
+        JLabel raceLabel = new JLabel("Race:");
+        JComboBox<RaceItem> raceCombo = new JComboBox<>();
+        raceLabel.setVisible(false);
+        raceCombo.setVisible(false);
+        final boolean[] updatingRace = {false};
+        final int[] myEmpireId = {-1};
+        raceCombo.addActionListener(e -> {
+            if (updatingRace[0])
+                return;
+            RaceItem sel = (RaceItem) raceCombo.getSelectedItem();
+            if (sel == null)
+                return;
+            Messages.PickRace pr = new Messages.PickRace();
+            pr.raceId = sel.info.id;
+            clientHolder[0].sendMessage(pr);
+        });
+
         JPanel lobby = new JPanel();
+        lobby.add(raceLabel);
+        lobby.add(raceCombo);
         lobby.add(aiLabel);
         lobby.add(aiSpinner);
         lobby.add(startBtn);
@@ -166,7 +208,7 @@ public class ClientMain {
 
         frame.setLayout(new BorderLayout());
         frame.add(galaxyPanel, BorderLayout.CENTER);
-        frame.add(colonyPanel, BorderLayout.EAST);
+        frame.add(eastTabs, BorderLayout.EAST);
         frame.add(bottom, BorderLayout.SOUTH);
         frame.setSize(1200, 750);
         frame.setLocationByPlatform(true);
@@ -177,7 +219,9 @@ public class ClientMain {
             name,
             msg -> SwingUtilities.invokeLater(() -> {
                 if (msg instanceof Messages.Joined) {
-                    boolean amHost = ((Messages.Joined) msg).host;
+                    Messages.Joined j = (Messages.Joined) msg;
+                    myEmpireId[0] = j.empireId;
+                    boolean amHost = j.host;
                     aiLabel.setVisible(amHost);
                     aiSpinner.setVisible(amHost);
                     startBtn.setVisible(amHost);
@@ -185,12 +229,30 @@ public class ClientMain {
                         ? "You are the host - choose AI opponents and press Start."
                         : "Joined - waiting for the host to start the game.");
                 }
+                else if (msg instanceof Messages.RaceOptions) {
+                    updatingRace[0] = true;
+                    raceCombo.removeAllItems();
+                    for (Messages.RaceInfo ri : ((Messages.RaceOptions) msg).races)
+                        raceCombo.addItem(new RaceItem(ri));
+                    updatingRace[0] = false;
+                    raceLabel.setVisible(true);
+                    raceCombo.setVisible(true);
+                    lobby.revalidate();
+                }
+                else if (msg instanceof Messages.Lobby) {
+                    for (Messages.Slot s : ((Messages.Lobby) msg).slots) {
+                        if ((s.empireId == myEmpireId[0]) && (s.raceId != null))
+                            selectRace(raceCombo, s.raceId, updatingRace);
+                    }
+                }
                 else if (msg instanceof Messages.GameStarted) {
+                    raceLabel.setVisible(false);
+                    raceCombo.setVisible(false);
                     aiLabel.setVisible(false);
                     aiSpinner.setVisible(false);
                     startBtn.setVisible(false);
                 }
-                handleMessage(msg, galaxyPanel, colonyPanel, researchPanel, fleetsPanel, shipDesignPanel, empirePanel, lastView, status, nextTurn);
+                handleMessage(msg, galaxyPanel, colonyPanel, systemInfoPanel, researchPanel, fleetsPanel, shipDesignPanel, empirePanel, lastView, status, nextTurn);
             }),
             text -> SwingUtilities.invokeLater(() -> status.setText(text)));
         clientHolder[0] = client;
@@ -201,6 +263,7 @@ public class ClientMain {
     }
 
     private static void handleMessage(Object msg, GalaxyViewPanel galaxyPanel, ColonyPanel colonyPanel,
+                                      SystemInfoPanel systemInfoPanel,
                                       ResearchPanel researchPanel, FleetsPanel fleetsPanel,
                                       ShipDesignPanel shipDesignPanel, EmpirePanel empirePanel,
                                       PlayerView[] lastView, JLabel status, JButton nextTurn) {
@@ -216,6 +279,7 @@ public class ClientMain {
             lastView[0] = view;
             galaxyPanel.view(view);
             colonyPanel.updateFromView(view);
+            systemInfoPanel.updateFromView(view);
             researchPanel.updateFromView(view);
             fleetsPanel.updateFromView(view);
             shipDesignPanel.updateFromView(view);
@@ -245,8 +309,54 @@ public class ClientMain {
                 status.setText(ns.items.size()+" event(s) this turn: "+ns.items.get(0).text
                     + (ns.items.size() > 1 ? " (+"+(ns.items.size()-1)+" more)" : ""));
         }
+        else if (msg instanceof Messages.GameOver) {
+            Messages.GameOver go = (Messages.GameOver) msg;
+            status.setText((go.won ? "YOU WON - " : "GAME OVER - ") + go.text);
+            nextTurn.setEnabled(false);
+            javax.swing.JOptionPane.showMessageDialog(null, go.text,
+                go.won ? "Victory" : "Game Over",
+                go.won ? javax.swing.JOptionPane.INFORMATION_MESSAGE
+                       : javax.swing.JOptionPane.WARNING_MESSAGE);
+        }
         else if (msg instanceof Messages.Error) {
             status.setText("Server error: "+((Messages.Error) msg).text);
         }
+    }
+
+    /** true if the system is one of the player's own colonies (has colony detail in the view) */
+    private static boolean isOwnColony(PlayerView v, int sysId) {
+        for (PlayerView.SystemDto s : v.systems)
+            if ((s.id == sysId) && (s.colony != null))
+                return true;
+        return false;
+    }
+
+    /** true if the player has scouted the system (its planet is known) */
+    private static boolean isScouted(PlayerView v, int sysId) {
+        for (PlayerView.SystemDto s : v.systems)
+            if (s.id == sysId)
+                return s.scouted;
+        return false;
+    }
+
+    /** select the combo entry for a race id without firing a pick back to the server */
+    private static void selectRace(JComboBox<RaceItem> combo, String raceId, boolean[] guard) {
+        for (int i = 0; i < combo.getItemCount(); i++) {
+            if (combo.getItemAt(i).info.id.equals(raceId)) {
+                if (combo.getSelectedIndex() != i) {
+                    guard[0] = true;
+                    combo.setSelectedIndex(i);
+                    guard[0] = false;
+                }
+                return;
+            }
+        }
+    }
+
+    /** combo wrapper so the race dropdown shows the race name */
+    private static class RaceItem {
+        final Messages.RaceInfo info;
+        RaceItem(Messages.RaceInfo info) { this.info = info; }
+        @Override public String toString() { return info.name; }
     }
 }

@@ -5,7 +5,7 @@ how to run what exists, and exactly what to do next. The full design rationale i
 in [`multiplayer-design.md`](multiplayer-design.md); this is the operational
 "pick up here" note.
 
-_Last updated: 2026-07-29 — Phase 1 complete; a Phase 2 item (lobby AI-fill) done; **now doing Phase 1.5 (human-validated full playthrough) — see "Do this next"**._
+_Last updated: 2026-07-30 — Phase 1 complete; **Phase 1.5 backlog all addressed** through a live solo play session (race + homeworld naming, victory/defeat, fleet dispatch with per-ship counts, System info tab, ship-range indicators; plus fixes for a turn-advance lockup, turn-1 scout auto-launch, and stale homeworld/leader names). 37 tests green. Remaining: one human sign-off playthrough to final win/loss, then Phase 2. See "Do this next"._
 
 ## Where we are
 
@@ -106,19 +106,64 @@ Division of labor: the **human plays/validates**; the model fixes what they hit
 (can't meaningfully drive a Swing app via automation). Start with #1.
 
 Known backlog:
-1. **Race/color selection** — API + server + minimal lobby UI. Server currently
-   auto-assigns races via the galaxy factory; add a lobby step exposing free races
-   and a command to pick one, then assign it (and the race's homeworld name). This
-   is real, reusable protocol work the browser client also needs. Also the
-   Phase-2 "lobby race/color" item — do it here.
-2. **Homeworld name from race** — server, rides along with #1 (`race.defaultHomeworldName()`).
-3. **Fleet dispatch / colonize affordance** — mostly UI; the API already supports
-   it (`deployFleet` to any system; colony ship auto-settles on arrival; `colonize`).
-   Make sending scouts/colony ships out (incl. many at once) actually usable.
-4. **Victory/defeat signaling to clients** — likely an API gap: the server sets a
-   game-over flag (`ServerUI.selectGameOverPanel` → `gameOver`) but doesn't send it.
-   Add a `gameOver` protocol message so the client can show you won/lost.
-5. **Scout-exploration convenience** — UI nicety.
+1. **Race selection — DONE (2026-07-30).** Protocol: `raceOptions` (server→client
+   on join, the 10 selectable races with id/name/trait), `pickRace` (client→server),
+   and `Slot.raceId` on the lobby roster. Server (`GameServer`): each joiner is
+   defaulted to the first free race (`firstFreeRace()`); `handlePickRace` validates
+   the id is a starting race and not held by another player, else refuses + resyncs
+   that client with a fresh lobby; `startGame` applies each human's pick to the
+   options (empire 0 → `selectedPlayerRace`, human at empire `k` → `selectedOpponentRace(k-1)`
+   — the factory maps opponent slot `i` to empire `i+1`, verified in `buildAlienRaces`).
+   AI-filled slots stay null → factory picks random unused races. Client: a race
+   dropdown in the lobby bar (all players), preselected from the lobby broadcast,
+   hidden on game start. See `RaceSelectionTest` (2 tests). **Color** deferred:
+   only the host (empire 0) has a clean `selectedPlayerColor`; opponent colors are
+   factory-assigned, so a symmetric color picker needs more plumbing — do it with
+   the browser lobby.
+2. **Homeworld name from race — DONE, rode along with #1.** `GalaxyFactory.newGalaxy`
+   already names the homeworld via `playerRace.nextAvailableHomeworld()`, so fixing
+   the race fixes the homeworld name; no extra work needed.
+3. **Fleet dispatch / colonize affordance — DONE (2026-07-30), via a live play
+   session.** Colony/Fleets/System are now docked tabs on the main window (no
+   hidden windows). Clicking a star targets it: your colony → Colony tab, a
+   scouted star → System tab, an unexplored dot → Fleets tab. Dispatch got a
+   **per-ship-type spinner row** (`DeployFleet.counts`) so scouts/colony ships
+   leave the shared home stack individually. New **System** info tab reports
+   planet type, capacity, ownership, and a colonizable verdict (`SystemDto`
+   gained `planetTypeName`/`maxSize`/`canColonize`). **Range** is surfaced three
+   ways (`SystemDto.distance`/`inShipRange`, `DesignDto.range`): out-of-range
+   stars tinted red on the map (extended-range scouts reach `scoutRange`, colony
+   ships only `shipRange`), a range line in the System tab, and a live
+   out-of-range warning in the dispatch panel naming the ship type. Colony ship
+   auto-settles on arrival (confirmed by the player). See `SystemInfoViewTest`.
+   Several bugs were found and fixed while validating (all with regression tests):
+   - **Turn stuck after turn 1**: the post-turn `TurnStatus` was broadcast before
+     `turnRunning` cleared, so it reported `processing=true` and the client left
+     the Next Turn button disabled forever. Moved it after the `finally`. `TurnAdvanceTest`.
+   - **Turn-1 scout auto-launch**: ROTP auto-dispatches a new empire's scouts;
+     `recallStartingFleets()` pulls them back into orbit so remote humans control
+     the opening move (e.g. send the colony ship out). `StartingFleetTest`.
+   - **Stale homeworld/leader name**: `selectedPlayerRace()` doesn't refresh the
+     `NewPlayer` homeworld/leader names (the setup UI normally does), so a Bulrathi
+     start was still named "Kholdan". `startGame` now clears the homeworld name and
+     resets the leader. Covered by the homeworld assertion in `RaceSelectionTest`.
+   Client also relabeled "Ready" → "Next Turn ▶".
+4. **Victory/defeat signaling — DONE (2026-07-30).** New `gameOver` message
+   (`won`, `reason`, `text`). After each turn `GameServer.checkGameOver()` reads
+   the engine's `GameSession.status()` (evaluated from empire 0 = the "player",
+   so authoritative for empire 0 / the solo game) and sends each empire its
+   outcome: empire 0 gets the specific win/loss reason; any human whose empire
+   went extinct gets `DEFEATED`; other surviving humans get a neutral `GAME_OVER`.
+   `gameEnded` then stops further turn resolution. Client pops a Victory/Game Over
+   dialog. See `GameOverTest`. **Not** covered: independent per-empire victory for
+   multi-human games (needs an engine change to evaluate win/loss from each human's
+   perspective) — do it with the deeper multiplayer work.
+5. **Scout-exploration convenience — DONE, folded into #3** (per-ship dispatch,
+   click-to-target, System info tab, range indicators).
+
+All Phase 1.5 backlog items are addressed; a solo game plays start → win/loss in
+the reference client. A human should still do one uninterrupted full playthrough
+to final victory/defeat to sign it off.
 
 Caveat: council votes + incoming AI diplomacy are auto-resolved (Phase 3), so
 "full playthrough" = you can win/lose a game, not every interactive prompt restored.
