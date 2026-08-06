@@ -159,6 +159,8 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "setColonyLock", (Messages.SetColonyLock) msg);
         else if (msg instanceof Messages.SetTechAllocations)
             handleCommand(conn, "setTechAlloc", (Messages.SetTechAllocations) msg);
+        else if (msg instanceof Messages.SetTechLock)
+            handleCommand(conn, "setTechLock", (Messages.SetTechLock) msg);
         else if (msg instanceof Messages.SetResearchChoice)
             handleCommand(conn, "setResearchChoice", (Messages.SetResearchChoice) msg);
         else if (msg instanceof Messages.DeployFleet)
@@ -618,6 +620,8 @@ public class GameServer extends WebSocketServer {
                 err = applySetColonyLock(emp, (Messages.SetColonyLock) cmd);
             else if (cmd instanceof Messages.SetTechAllocations)
                 err = applyTechAllocations(emp, (Messages.SetTechAllocations) cmd);
+            else if (cmd instanceof Messages.SetTechLock)
+                err = applySetTechLock(emp, (Messages.SetTechLock) cmd);
             else if (cmd instanceof Messages.SetResearchChoice)
                 err = applyResearchChoice(emp, (Messages.SetResearchChoice) cmd);
             else if (cmd instanceof Messages.DeployFleet)
@@ -804,7 +808,21 @@ public class GameServer extends WebSocketServer {
         if (sum > TechCategory.MAX_ALLOCATION_TICKS)
             return "Total allocation exceeds "+TechCategory.MAX_ALLOCATION_TICKS;
         for (int i = 0; i < TechTree.NUM_CATEGORIES; i++)
+            if (emp.tech().category(i).locked() && (alloc[i] != emp.tech().category(i).allocation()))
+                return "Category "+i+" is locked";
+        for (int i = 0; i < TechTree.NUM_CATEGORIES; i++)
             emp.tech().category(i).allocation(alloc[i]);
+        return null;
+    }
+
+    private String applySetTechLock(Empire emp, Messages.SetTechLock cmd) {
+        if ((cmd.category < 0) || (cmd.category >= TechTree.NUM_CATEGORIES))
+            return "Category must be 0-" + (TechTree.NUM_CATEGORIES - 1);
+        TechCategory cat = emp.tech().category(cmd.category);
+        // TechCategory only exposes toggleLock(); flip only if the state must change.
+        // (locked() also returns true for a completed category, which can't be unlocked.)
+        if (cat.locked() != cmd.locked)
+            cat.toggleLock();
         return null;
     }
 

@@ -180,6 +180,15 @@ public final class Messages {
         public boolean locked;
     }
 
+    /**
+     * lock or unlock one research category, so redistribution leaves it untouched.
+     * Reflected back in TechDto.locked.
+     */
+    public static class SetTechLock {
+        public int category;      // 0-5 (computers/construction/forcefield/planetology/propulsion/weapon)
+        public boolean locked;
+    }
+
     /** replace empire research allocation; 6 categories, ticks 0-60 each, sum <= 60 */
     public static class SetTechAllocations {
         public int[] alloc;

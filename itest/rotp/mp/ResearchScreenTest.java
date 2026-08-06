@@ -132,6 +132,32 @@ public class ResearchScreenTest {
     }
 
     @Test
+    @Timeout(120)
+    void lockingAResearchCategoryProtectsItAndIsReflectedInTheView() throws Exception {
+        server = MpTestSupport.startServer(1);
+        alice = new Client(server.port, "Alice");
+        alice.awaitView();
+
+        Messages.SetTechAllocations ta = new Messages.SetTechAllocations();
+        ta.alloc = new int[]{20, 20, 20, 0, 0, 0};       // sum 60
+        assertTrue(alice.order(ta).ok, "research split applied");
+
+        Messages.SetTechLock lk = new Messages.SetTechLock();
+        lk.category = 0; lk.locked = true;               // lock Computers
+        assertTrue(alice.order(lk).ok, "locking a research category is accepted");
+        assertTrue(alice.lastView.tech.locked[0], "the lock is reflected in the view");
+
+        // an allocation that would move the locked category is rejected
+        Messages.SetTechAllocations move = new Messages.SetTechAllocations();
+        move.alloc = new int[]{0, 30, 30, 0, 0, 0};      // Computers 0 != locked 20
+        assertFalse(alice.order(move).ok, "changing a locked research category is rejected");
+
+        lk.locked = false;
+        assertTrue(alice.order(lk).ok, "unlocking is accepted");
+        assertFalse(alice.lastView.tech.locked[0], "the category is no longer locked");
+    }
+
+    @Test
     void redistributionKeepsResearchTotalAtSixty() {
         int[] a = {10, 10, 10, 10, 10, 10};
         a[0] = 40;

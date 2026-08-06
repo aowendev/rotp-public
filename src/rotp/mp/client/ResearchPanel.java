@@ -57,6 +57,9 @@ public class ResearchPanel extends JPanel {
     private final JLabel rpLabel = new JLabel(" ");
     private final JSlider[] sliders = new JSlider[6];
     private final JLabel[] valueLabels = new JLabel[6];
+    /** per-category lock: a locked category holds its value during redistribution */
+    private final javax.swing.JCheckBox[] lockChecks = new javax.swing.JCheckBox[6];
+    private boolean[] locked = new boolean[6];
     @SuppressWarnings("unchecked")
     private final javax.swing.JComboBox<ChoiceItem>[] choiceCombos = new javax.swing.JComboBox[6];
     private final JLabel totalLabel = new JLabel(" ");
@@ -91,6 +94,10 @@ public class ResearchPanel extends JPanel {
             javax.swing.JComboBox<ChoiceItem> choice = new javax.swing.JComboBox<>();
             choice.addActionListener(e -> onChoiceChanged(idx));
             choiceCombos[i] = choice;
+            javax.swing.JCheckBox lock = new javax.swing.JCheckBox();
+            lock.setToolTipText("Lock this category so it keeps its value when others change");
+            lock.addActionListener(e -> onLockToggled(idx));
+            lockChecks[i] = lock;
 
             c.gridy = i * 2;
             c.gridx = 0; c.weightx = 0;
@@ -99,6 +106,8 @@ public class ResearchPanel extends JPanel {
             grid.add(s, c);
             c.gridx = 2; c.weightx = 0;
             grid.add(valueLabels[i], c);
+            c.gridx = 3; c.weightx = 0;
+            grid.add(lock, c);
 
             c.gridy = i * 2 + 1;
             c.gridx = 0; c.weightx = 0;
@@ -132,10 +141,13 @@ public class ResearchPanel extends JPanel {
 
     private void load(PlayerView.TechDto t) {
         rpLabel.setText(String.format("%.0f research points/turn", t.totalRP));
+        locked = (t.locked != null) ? t.locked.clone() : new boolean[6];
         adjusting = true;
         for (int i = 0; i < 6; i++) {
             int v = (t.alloc != null && i < t.alloc.length) ? t.alloc[i] : 0;
             sliders[i].setValue(v);
+            sliders[i].setEnabled(!locked[i]);
+            lockChecks[i].setSelected(locked[i]);   // setSelected does not fire the action listener
             loadChoices(i, t);
         }
         adjusting = false;
@@ -193,13 +205,31 @@ public class ResearchPanel extends JPanel {
         if (adjusting)
             return;
         int[] a = currentValues();
-        ColonyAllocations.balance(a, idx, null, MAX_TICKS);
+        ColonyAllocations.balance(a, idx, locked, MAX_TICKS);
         adjusting = true;
         for (int i = 0; i < 6; i++)
             sliders[i].setValue(a[i]);
         adjusting = false;
         dirty = true;
         refreshLabels();
+    }
+
+    private void onLockToggled(int idx) {
+        boolean lock = lockChecks[idx].isSelected();
+        locked[idx] = lock;
+        sliders[idx].setEnabled(!lock);
+        // if locking with unsent edits, commit the shown split first so the value
+        // being locked is the one displayed (mirrors the colony screen)
+        if (lock && dirty && (ColonyAllocations.sum(currentValues()) == MAX_TICKS)) {
+            Messages.SetTechAllocations alloc = new Messages.SetTechAllocations();
+            alloc.alloc = currentValues();
+            orderSender.accept(alloc);
+            dirty = false;
+        }
+        Messages.SetTechLock msg = new Messages.SetTechLock();
+        msg.category = idx;
+        msg.locked = lock;
+        orderSender.accept(msg);
     }
 
     private void sendOrder() {
@@ -221,8 +251,10 @@ public class ResearchPanel extends JPanel {
     }
 
     private void setControlsEnabled(boolean on) {
-        for (JSlider s : sliders)
-            s.setEnabled(on);
+        for (int i = 0; i < 6; i++) {
+            sliders[i].setEnabled(on && !locked[i]);
+            lockChecks[i].setEnabled(on);
+        }
         for (javax.swing.JComboBox<ChoiceItem> c : choiceCombos)
             c.setEnabled(on);
         apply.setEnabled(false);

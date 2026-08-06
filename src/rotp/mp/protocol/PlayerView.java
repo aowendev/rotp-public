@@ -111,6 +111,7 @@ public final class PlayerView {
     /** research: 6 categories (computer/construction/forcefield/planetology/propulsion/weapon) */
     public static class TechDto {
         public int[] alloc;             // ticks 0-60 per category
+        public boolean[] locked;        // per category: held during redistribution
         public String[] researching;    // current tech name per category, null if none
         public String[] researchingId;  // current tech id per category, null if none
         public float totalRP;

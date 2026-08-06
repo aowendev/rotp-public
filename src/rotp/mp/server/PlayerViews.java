@@ -168,11 +168,13 @@ public final class PlayerViews {
     private static PlayerView.TechDto techDto(TechTree tech) {
         PlayerView.TechDto t = new PlayerView.TechDto();
         t.alloc = new int[TechTree.NUM_CATEGORIES];
+        t.locked = new boolean[TechTree.NUM_CATEGORIES];
         t.researching = new String[TechTree.NUM_CATEGORIES];
         t.researchingId = new String[TechTree.NUM_CATEGORIES];
         for (int i = 0; i < TechTree.NUM_CATEGORIES; i++) {
             TechCategory cat = tech.category(i);
             t.alloc[i] = cat.allocation();
+            t.locked[i] = cat.locked();
             t.researchingId[i] = cat.currentTech();
             t.researching[i] = (cat.currentTech() == null) ? null : cat.currentTechName();
             java.util.List<PlayerView.TechChoice> choices = new java.util.ArrayList<>();
