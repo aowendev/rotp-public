@@ -78,6 +78,41 @@ public final class Messages {
      */
     public static class StartGame {
         public int aiOpponents = -1;
+        /** chosen galaxy size (IGameOptions.SIZE_*); null keeps the server default */
+        public String galaxySize;
+        /** chosen difficulty = AI ability (IGameOptions.DIFFICULTY_*); null keeps the default */
+        public String difficulty;
+    }
+
+    /**
+     * server -> client: the difficulty levels the host may choose in the lobby.
+     * In ROTP "difficulty" is really the AI's ability: each level scales the AI's
+     * economy (production), so a higher level means a stronger opponent, not a
+     * harder puzzle for the human. The client presents this as "AI ability".
+     */
+    public static class DifficultyOptions {
+        public List<DifficultyInfo> levels = new ArrayList<>();
+        /** the level currently selected by default (an id in the list above) */
+        public String selectedId;
+    }
+
+    public static class DifficultyInfo {
+        public String id;              // IGameOptions.DIFFICULTY_* constant
+        public String name;            // readable label, e.g. "Normal"
+        public int aiProductionPct;    // AI economy strength, e.g. 100 = parity, 200 = double
+    }
+
+    /** server -> client: galaxy sizes the host may choose in the lobby */
+    public static class SizeOptions {
+        public List<SizeInfo> sizes = new ArrayList<>();
+        /** the size currently selected by default (an id in the list above) */
+        public String selectedId;
+    }
+
+    public static class SizeInfo {
+        public String id;      // IGameOptions.SIZE_* constant
+        public String name;    // readable label, e.g. "Small"
+        public int stars;      // number of star systems at this size
     }
 
     /** server -> client: game created, you are this empire */

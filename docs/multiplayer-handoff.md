@@ -5,7 +5,7 @@ how to run what exists, and exactly what to do next. The full design rationale i
 in [`multiplayer-design.md`](multiplayer-design.md); this is the operational
 "pick up here" note.
 
-_Last updated: 2026-07-30 — Phase 1 complete; **Phase 1.5 backlog all addressed** through a live solo play session (race + homeworld naming, victory/defeat, fleet dispatch with per-ship counts, System info tab, ship-range indicators; plus fixes for a turn-advance lockup, turn-1 scout auto-launch, and stale homeworld/leader names). 37 tests green. Remaining: one human sign-off playthrough to final win/loss, then Phase 2. See "Do this next"._
+_Last updated: 2026-08-06 — Phase 1.5 backlog addressed; **Phase 2 session-completeness work landed** during a live solo test session: a **Races/diplomacy client panel** (⌘R — the outgoing diplomacy commands finally have a UI), **client reconnection** (a dropped client rejoins its empire by name, so a game survives a client relaunch), and a **lobby galaxy-size picker** and an **"AI ability" (difficulty) picker** (host chooses size + AI strength before Start), and **per-category colony result hints** (each spending slider shows years-to-complete / output-per-year / waste-clean-or-+n-pop / research points, computed server-side). 51 tests green. Remaining: one human sign-off playthrough to final win/loss. See "Do this next"._
 
 ## Where we are
 
@@ -17,10 +17,16 @@ fleets & transports, ship design, empire overview) from `PlayerView` and drives
 every decision — economy, research (incl. choosing what to research), ship
 design + build, expansion, transports, spy, diplomacy — via commands, holding no
 game model. We-go turns; per-empire notifications (contact/diplomacy/colony/tech);
-a lobby where the host can start against AI. **30 JUnit integration tests, green.**
+a lobby where the host can start against AI, **choose the galaxy size and AI
+ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
+and **client reconnection** so a game survives a client relaunch; colony sliders
+show **per-category result hints** (years/output/growth/RP). **51 JUnit
+integration tests, green.**
 
 **Continuing Phase 2** (LAN & session completeness) — see "Do this next".
-Latest commit: `7a2cdd95` (Phase 2 lobby AI-fill).
+Built on `7a2cdd95` (Phase 2 lobby AI-fill); the Races panel, client reconnection,
+the galaxy-size and AI-ability (difficulty) lobby pickers, and the colony
+result-hints are committed on top of it in one batch.
 
 ## Run it
 
@@ -72,19 +78,56 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   and acts via commands — **no game model on the client**. Settled architecture
   (design doc "Client rendering"): reusing ROTP's real Swing panels was rejected
   because a browser can use none of it.
-- `ColonyPanel` also chooses which design the colony builds (`setShipBuild`);
-  `ResearchPanel` lets the player choose each category's research target
+- `ColonyPanel` also chooses which design the colony builds (`setShipBuild`) and
+  shows a **per-category result hint** beside each slider — years-to-complete
+  (Ship/Def), output per year (Ind), Waste/Clean/+n pop (Eco), and research points
+  (Tech) — computed server-side via each category's `upcomingResult()` and carried
+  in `ColonyDto.result` (the client runs no game math; hints dim while a slider has
+  unsent edits, since they reflect the applied spending). `ResearchPanel` lets the
+  player choose each category's research target
   (`setResearchChoice`, dropdowns); `EmpirePanel` (Planet List ⌘P) is a read-only
   overview. Map clicks set the fleet-deploy destination. This is the
   **core-playable screen set**; the full economy→build→expand loop is clickable
   end-to-end (choose research → design → set colony build + ship spending → deploy).
-- Verified by `itest/rotp/mp/` (30 tests): order/isolation, design/transport,
+- **Races/diplomacy panel** (`RacesPanel`, Misc → Races / ⌘R): one card per
+  contacted empire showing the relationship, with Offer Trade (level spinner) /
+  Peace / Pact / Alliance, Break Treaty, and Declare War — each enabled only when
+  the server would accept it — plus a reply log. The legality rules live in the
+  pure `Diplomacy` helper (mirrors `GameServer.applyDiploOffer/applyBreakTreaty/
+  applyDeclareWar`). This is the client UI for the diplomacy commands, which were
+  server-complete and test-covered but previously unreachable from the client; the
+  `diploReply` message (verdicts) is now surfaced instead of dropped.
+- **Client reconnection** (`GameServer`): a client that drops mid-game is held by
+  name (`departed` map); a returning `hello` re-attaches to the same empire and
+  replays `gameStarted` + a fresh view (the client re-requests the design catalog
+  on its first view). Solo games pause while the only human is away. New players
+  are still rejected mid-game. **This is why the reference client can be relaunched
+  to pick up a rebuild without losing the game.**
+- **Lobby galaxy-size picker**: the server offers the selectable sizes on join
+  (`sizeOptions`, with labels + star counts) and the host's pick rides on
+  `startGame.galaxySize`, overriding the launch `size=` default. Client shows a
+  host-only Galaxy dropdown next to the AI-opponent spinner.
+- **Lobby "AI ability" (difficulty) picker**: the server offers the levels
+  (`difficultyOptions`, each labelled with the AI's production strength — Normal
+  100%, Hardest 200%, etc.); the host's pick rides on `startGame.difficulty` and is
+  applied via `selectedGameDifficulty`. Deliberately labelled **"AI ability"** on
+  the client, since the level scales the AI's economy (a stronger opponent), not a
+  human puzzle-difficulty. See the option-set-mismatch TODO under Phase 2.
+- Verified by `itest/rotp/mp/` (51 tests): order/isolation, design/transport,
   spy/diplomacy (also assert notification delivery incl. TECH), the colony /
   research / fleets / ship-design / empire-overview screens (redistribution, DTO
   load, map click hit-test + fleet-destination, build-option load, research-choice
   round-trip, tech-completion notification, fleet summarization, free-slot/catalog,
-  empire rollups, server equalizing research at start), and the lobby
-  (`LobbyStartTest`: solo host vs AI, host-only start).
+  empire rollups, server equalizing research at start), the lobby
+  (`LobbyStartTest`: solo host vs AI, host-only start), the **Races panel**
+  (`RacesScreenTest`: diplomacy legality rules + panel load), **reconnection**
+  (`ReconnectTest`: rejoin same empire mid-game, new player still rejected), and
+  the **galaxy-size picker** (`GalaxySizeTest`: sizes offered, host choice
+  overrides the default, invalid size rejected), and the **AI-ability/difficulty
+  picker** (`DifficultyTest`: levels offered with AI-strength %, host choice
+  applied, invalid rejected). Note `SpyDiplomacyTest` is
+  geography-dependent (unseeded RNG) and can occasionally error on a scouting
+  timeout rather than skip cleanly — rerun it; seeding the RNG is the real fix.
   Harness: `startServer` waits for the port to listen, then each client connects
   once (a WebSocketClient can't be reconnected — old retry loop was flaky).
 
@@ -178,16 +221,48 @@ early, and the game fills to `humans-present + aiOpponents` empires (clamped to
 button to the host. See `GameServer.startGame(int aiOverride)` and
 `LobbyStartTest`. This realizes the solo-vs-AI-on-LAN requirement.
 
+**DONE — reconnection.** A dropped client rejoins its empire, matched by name.
+`GameServer.onClose` stashes a departed player (`departed` map) once the game has
+started; a returning `hello` re-attaches the new connection to the same `Player`
+and replays `gameStarted` + a fresh `PlayerView` (`reconnect(...)`). Solo games
+pause while the only human is away (empty `players` → no turn resolves); new
+players are still rejected mid-game. See `ReconnectTest`. Not yet handled: a
+client returning under a *different* name (no match), and multi-human races on the
+same name (first match wins).
+
+**DONE — lobby galaxy-size pick.** Server sends `sizeOptions` on join; the host's
+choice rides on `startGame.galaxySize` and overrides the launch `size=` default
+(`GameServer.sizeOptions()` / `handleStartGame`). See `GalaxySizeTest`.
+
+**DONE — lobby difficulty (= AI ability) pick.** Server sends `difficultyOptions`
+on join (each level labelled with the AI's production strength, e.g. Normal = 100%,
+Hardest = 200%); the host's choice rides on `startGame.difficulty` and is applied
+via `options.selectedGameDifficulty(...)`. Surfaced in the client as an **"AI
+ability"** dropdown (not "difficulty"), because in ROTP the level scales the AI's
+economy — it makes the opponent stronger, it is not a puzzle-difficulty knob for
+the human. Default is `DIFFICULTY_EASY` (the engine default; MP games ran at Easy
+before this). See `GameServer.difficultyOptions()` and `DifficultyTest`.
+
+> **Option-set mismatch to resolve (design TODO).** ROTP exposes far more choices
+> than the 1990s Mac original we're targeting for UX: **17 galaxy sizes**
+> (Tiny…Ludicrous/Maximum) vs the original's Small/Medium/Large/Huge, and **7
+> difficulty levels** (Easiest…Hardest) vs the original's Simple/Easy/Average/Hard/
+> Impossible. Right now the lobby offers ROTP's full lists verbatim. We need to
+> decide the mapping between the original's option set and ROTP's — either restrict
+> the lobby to the original's choices (mapping each onto the closest ROTP constant)
+> or present ROTP's full range and note the original-equivalents. Same question
+> applies to any other setup option we surface later (opponents, research rate, etc.).
+> Settle this when building the browser lobby against `mac-ux-spec.md`; the server
+> already validates against ROTP's `galaxySizeOptions()` / `gameDifficultyOptions()`,
+> so narrowing is a client/lobby concern, not an engine change.
+
 Remaining Phase 2:
 
-1. **Reconnection**: let a dropped client rejoin its empire (the game keeps running
-   on the server; a rejoining client just needs a fresh `PlayerView`). Match a
-   returning `hello` to a departed player's slot (e.g. by name) rather than a new
-   join; re-send `gameStarted` + a `view`.
-3. **Multiplayer save/load**: the whole `GameSession` already serializes
+1. **Multiplayer save/load**: the whole `GameSession` already serializes
    (`saveSession`/`loadSession`); add lobby actions to save/restore a running game,
    including the `remoteHuman` flags.
-4. **Lobby polish**: race/color picks before start.
+2. **Lobby polish**: color picks before start (race + galaxy size now done; symmetric
+   color picker still needs the opponent-color plumbing noted under Phase 1.5 #1).
 
 Deferred Phase-1 polish (pick up any time): per-design partial fleet deploys
 (`deployFleet.counts[]` — surface per-design count spinners on a selected fleet);
@@ -255,9 +330,15 @@ Phase 5 (browser client). See design doc §7.
 - `src/rotp/mp/server/` — `ServerMain`, `GameServer` (lobby + commands + turn driver),
   `PlayerViews` (DTO builder), `NotificationCenter` (per-empire event diffing),
   `ServerUI` (headless `SessionUI`).
-- `src/rotp/mp/client/` — `NetClient`, `ClientMain`, `GalaxyViewPanel` (clickable
-  map), `ColonyPanel` (colony screen), `ColonyAllocations` (pure spending logic).
+- `src/rotp/mp/client/` — `NetClient`, `ClientMain` (window + Mac-style menu bar,
+  incl. Races ⌘R and the lobby race/galaxy-size/AI controls), `GalaxyViewPanel`
+  (clickable map), `ColonyPanel` (colony screen), `ColonyAllocations` (pure spending
+  logic), `RacesPanel` + `Diplomacy` (diplomacy screen + pure legality rules).
   DTO-rendered, no game model on the client.
-- `itest/rotp/mp/` — integration tests + `MpTestSupport` harness.
+- Reconnection lives in `GameServer` (`departed` map, `onClose`, `handleHello` →
+  `reconnect`); the lobby galaxy-size pick in `GameServer.sizeOptions()` +
+  `handleStartGame`, surfaced via `Messages.SizeOptions` / `StartGame.galaxySize`.
+- `itest/rotp/mp/` — integration tests + `MpTestSupport` harness (new:
+  `RacesScreenTest`, `ReconnectTest`, `GalaxySizeTest`, `DifficultyTest`).
 - Engine seams: `rotp.model.game.SessionUI`; `Empire.decidedByAI/isRemoteHuman`;
   moved statics in `Rotp` (scaling, debug file) and `GameSession` (pending options).

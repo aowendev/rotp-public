@@ -67,6 +67,7 @@ public class ClientMain {
         FleetsPanel fleetsPanel = new FleetsPanel(order -> clientHolder[0].sendMessage(order));
         ShipDesignPanel shipDesignPanel = new ShipDesignPanel(order -> clientHolder[0].sendMessage(order));
         EmpirePanel empirePanel = new EmpirePanel();
+        RacesPanel racesPanel = new RacesPanel(order -> clientHolder[0].sendMessage(order));
         JLabel status = new JLabel("Connecting to "+host+":"+port+"...");
         JButton nextTurn = new JButton("Next Turn ▶");
         nextTurn.setToolTipText("Submit your orders (if any) and advance the turn (⌘N)");
@@ -98,6 +99,11 @@ public class ClientMain {
         empireWindow.add(empirePanel);
         empireWindow.setSize(580, 480);
         empireWindow.setLocationByPlatform(true);
+
+        JFrame racesWindow = new JFrame("Races");
+        racesWindow.add(racesPanel);
+        racesWindow.setSize(640, 560);
+        racesWindow.setLocationByPlatform(true);
 
         Runnable ready = () -> {
             nextTurn.setEnabled(false);
@@ -152,25 +158,48 @@ public class ClientMain {
         JMenuItem techItem = new JMenuItem("Technology");
         techItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_T, menuMask));
         techItem.addActionListener(e -> researchWindow.setVisible(!researchWindow.isVisible()));
+        JMenuItem racesItem = new JMenuItem("Races");
+        racesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, menuMask));
+        racesItem.addActionListener(e -> racesWindow.setVisible(!racesWindow.isVisible()));
         JMenuItem nextTurnItem = new JMenuItem("Next Turn (Ready)");
         nextTurnItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, menuMask));
         nextTurnItem.addActionListener(e -> { if (nextTurn.isEnabled()) ready.run(); });
         misc.add(techItem);
+        misc.add(racesItem);
         misc.add(nextTurnItem);
         menuBar.add(misc);
         frame.setJMenuBar(menuBar);
 
         // host-only lobby controls: choose AI opponents and start the game with
         // the humans present (hidden until we learn we're the host, and on start)
+        final boolean[] amHost = {false};
         JLabel aiLabel = new JLabel("AI opponents:");
         JSpinner aiSpinner = new JSpinner(new SpinnerNumberModel(2, 0, 8, 1));
+        // galaxy size picker (host-only, populated from the server's sizeOptions)
+        JLabel sizeLabel = new JLabel("Galaxy:");
+        JComboBox<SizeItem> sizeCombo = new JComboBox<>();
+        // "difficulty" in ROTP is really the AI's ability, so label it as such
+        JLabel difficultyLabel = new JLabel("AI ability:");
+        JComboBox<DifficultyItem> difficultyCombo = new JComboBox<>();
+        difficultyCombo.setToolTipText("Sets the AI opponents' strength (their economy). "
+            + "Higher = tougher AI, not a harder puzzle for you.");
         JButton startBtn = new JButton("Start Game");
         aiLabel.setVisible(false);
         aiSpinner.setVisible(false);
+        sizeLabel.setVisible(false);
+        sizeCombo.setVisible(false);
+        difficultyLabel.setVisible(false);
+        difficultyCombo.setVisible(false);
         startBtn.setVisible(false);
         startBtn.addActionListener(e -> {
             Messages.StartGame sg = new Messages.StartGame();
             sg.aiOpponents = (Integer) aiSpinner.getValue();
+            SizeItem sz = (SizeItem) sizeCombo.getSelectedItem();
+            if (sz != null)
+                sg.galaxySize = sz.id;
+            DifficultyItem df = (DifficultyItem) difficultyCombo.getSelectedItem();
+            if (df != null)
+                sg.difficulty = df.id;
             clientHolder[0].sendMessage(sg);
             startBtn.setEnabled(false);
             status.setText("Starting game...");
@@ -197,6 +226,10 @@ public class ClientMain {
         JPanel lobby = new JPanel();
         lobby.add(raceLabel);
         lobby.add(raceCombo);
+        lobby.add(sizeLabel);
+        lobby.add(sizeCombo);
+        lobby.add(difficultyLabel);
+        lobby.add(difficultyCombo);
         lobby.add(aiLabel);
         lobby.add(aiSpinner);
         lobby.add(startBtn);
@@ -221,13 +254,40 @@ public class ClientMain {
                 if (msg instanceof Messages.Joined) {
                     Messages.Joined j = (Messages.Joined) msg;
                     myEmpireId[0] = j.empireId;
-                    boolean amHost = j.host;
-                    aiLabel.setVisible(amHost);
-                    aiSpinner.setVisible(amHost);
-                    startBtn.setVisible(amHost);
-                    status.setText(amHost
-                        ? "You are the host - choose AI opponents and press Start."
+                    amHost[0] = j.host;
+                    aiLabel.setVisible(j.host);
+                    aiSpinner.setVisible(j.host);
+                    // size/AI-ability pickers show once their options arrive; reveal now if already loaded
+                    sizeLabel.setVisible(j.host && sizeCombo.getItemCount() > 0);
+                    sizeCombo.setVisible(j.host && sizeCombo.getItemCount() > 0);
+                    difficultyLabel.setVisible(j.host && difficultyCombo.getItemCount() > 0);
+                    difficultyCombo.setVisible(j.host && difficultyCombo.getItemCount() > 0);
+                    startBtn.setVisible(j.host);
+                    status.setText(j.host
+                        ? "You are the host - choose galaxy size and AI opponents, then press Start."
                         : "Joined - waiting for the host to start the game.");
+                }
+                else if (msg instanceof Messages.SizeOptions) {
+                    Messages.SizeOptions so = (Messages.SizeOptions) msg;
+                    sizeCombo.removeAllItems();
+                    for (Messages.SizeInfo si : so.sizes)
+                        sizeCombo.addItem(new SizeItem(si));
+                    selectSize(sizeCombo, so.selectedId);
+                    // only the host chooses the size
+                    sizeLabel.setVisible(amHost[0]);
+                    sizeCombo.setVisible(amHost[0]);
+                    lobby.revalidate();
+                }
+                else if (msg instanceof Messages.DifficultyOptions) {
+                    Messages.DifficultyOptions dop = (Messages.DifficultyOptions) msg;
+                    difficultyCombo.removeAllItems();
+                    for (Messages.DifficultyInfo di : dop.levels)
+                        difficultyCombo.addItem(new DifficultyItem(di));
+                    selectDifficulty(difficultyCombo, dop.selectedId);
+                    // only the host chooses the AI ability
+                    difficultyLabel.setVisible(amHost[0]);
+                    difficultyCombo.setVisible(amHost[0]);
+                    lobby.revalidate();
                 }
                 else if (msg instanceof Messages.RaceOptions) {
                     updatingRace[0] = true;
@@ -248,11 +308,15 @@ public class ClientMain {
                 else if (msg instanceof Messages.GameStarted) {
                     raceLabel.setVisible(false);
                     raceCombo.setVisible(false);
+                    sizeLabel.setVisible(false);
+                    sizeCombo.setVisible(false);
+                    difficultyLabel.setVisible(false);
+                    difficultyCombo.setVisible(false);
                     aiLabel.setVisible(false);
                     aiSpinner.setVisible(false);
                     startBtn.setVisible(false);
                 }
-                handleMessage(msg, galaxyPanel, colonyPanel, systemInfoPanel, researchPanel, fleetsPanel, shipDesignPanel, empirePanel, lastView, status, nextTurn);
+                handleMessage(msg, galaxyPanel, colonyPanel, systemInfoPanel, researchPanel, fleetsPanel, shipDesignPanel, empirePanel, racesPanel, lastView, status, nextTurn);
             }),
             text -> SwingUtilities.invokeLater(() -> status.setText(text)));
         clientHolder[0] = client;
@@ -266,6 +330,7 @@ public class ClientMain {
                                       SystemInfoPanel systemInfoPanel,
                                       ResearchPanel researchPanel, FleetsPanel fleetsPanel,
                                       ShipDesignPanel shipDesignPanel, EmpirePanel empirePanel,
+                                      RacesPanel racesPanel,
                                       PlayerView[] lastView, JLabel status, JButton nextTurn) {
         if (msg instanceof Messages.Lobby) {
             Messages.Lobby lobby = (Messages.Lobby) msg;
@@ -284,6 +349,7 @@ public class ClientMain {
             fleetsPanel.updateFromView(view);
             shipDesignPanel.updateFromView(view);
             empirePanel.updateFromView(view);
+            racesPanel.updateFromView(view);
             status.setText(view.empireName+"  -  "+view.year+" (turn "+view.turn+")");
             nextTurn.setEnabled(true);
         }
@@ -300,6 +366,12 @@ public class ClientMain {
         }
         else if (msg instanceof Messages.DesignCatalog) {
             shipDesignPanel.setCatalog((Messages.DesignCatalog) msg);
+        }
+        else if (msg instanceof Messages.DiploReply) {
+            Messages.DiploReply dr = (Messages.DiploReply) msg;
+            racesPanel.showReply(dr);
+            status.setText("Diplomatic reply: " + (dr.accepted ? "accepted" : "refused")
+                + " your " + dr.action + " offer");
         }
         else if (msg instanceof Messages.Notifications) {
             Messages.Notifications ns = (Messages.Notifications) msg;
@@ -353,10 +425,58 @@ public class ClientMain {
         }
     }
 
+    /** select the combo entry for a galaxy-size id (no action needed - the size
+     * is only read when Start is pressed, so no guard against re-firing) */
+    private static void selectSize(JComboBox<SizeItem> combo, String sizeId) {
+        if (sizeId == null)
+            return;
+        for (int i = 0; i < combo.getItemCount(); i++) {
+            if (combo.getItemAt(i).id.equals(sizeId)) {
+                combo.setSelectedIndex(i);
+                return;
+            }
+        }
+    }
+
     /** combo wrapper so the race dropdown shows the race name */
     private static class RaceItem {
         final Messages.RaceInfo info;
         RaceItem(Messages.RaceInfo info) { this.info = info; }
         @Override public String toString() { return info.name; }
+    }
+
+    /** combo wrapper showing a galaxy size and its star count */
+    private static class SizeItem {
+        final String id;
+        final String label;
+        SizeItem(Messages.SizeInfo info) {
+            this.id = info.id;
+            this.label = (info.stars > 0) ? info.name + " (" + info.stars + " stars)" : info.name;
+        }
+        @Override public String toString() { return label; }
+    }
+
+    /** select the combo entry for a difficulty id (read only when Start is pressed) */
+    private static void selectDifficulty(JComboBox<DifficultyItem> combo, String id) {
+        if (id == null)
+            return;
+        for (int i = 0; i < combo.getItemCount(); i++) {
+            if (combo.getItemAt(i).id.equals(id)) {
+                combo.setSelectedIndex(i);
+                return;
+            }
+        }
+    }
+
+    /** combo wrapper for a difficulty level, shown as the AI's economy strength so
+     * it reads as "how able the AI is", not "how hard the game is for me" */
+    private static class DifficultyItem {
+        final String id;
+        final String label;
+        DifficultyItem(Messages.DifficultyInfo info) {
+            this.id = info.id;
+            this.label = info.name + " - AI " + info.aiProductionPct + "%";
+        }
+        @Override public String toString() { return label; }
     }
 }

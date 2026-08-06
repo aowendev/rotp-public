@@ -89,6 +89,11 @@ public final class PlayerView {
     public static class ColonyDto {
         public int[] alloc;
         public boolean[] locked;
+        /** per-category server-computed result hint for the current spending, in the
+         * same words the desktop colony screen shows: Ship/Def years-to-complete,
+         * Ind BC or factories per year, Eco WASTE/CLEAN/+n pop, Tech research points.
+         * One entry per category (indices as above). */
+        public String[] result;
         public float population;
         public float factories;
         public float bases;

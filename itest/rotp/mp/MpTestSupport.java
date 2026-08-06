@@ -122,6 +122,8 @@ public final class MpTestSupport {
         public final BlockingQueue<Messages.Lobby> lobbies = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.GameStarted> starts = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.Joined> joins = new LinkedBlockingQueue<>();
+        public final BlockingQueue<Messages.SizeOptions> sizeOptions = new LinkedBlockingQueue<>();
+        public final BlockingQueue<Messages.DifficultyOptions> difficultyOptions = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.Error> errors = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.Notifications> notifications = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.GameOver> gameOvers = new LinkedBlockingQueue<>();
@@ -148,6 +150,8 @@ public final class MpTestSupport {
                     else if (msg instanceof Messages.Lobby) lobbies.offer((Messages.Lobby) msg);
                     else if (msg instanceof Messages.GameStarted) starts.offer((Messages.GameStarted) msg);
                     else if (msg instanceof Messages.Joined) joins.offer((Messages.Joined) msg);
+                    else if (msg instanceof Messages.SizeOptions) sizeOptions.offer((Messages.SizeOptions) msg);
+                    else if (msg instanceof Messages.DifficultyOptions) difficultyOptions.offer((Messages.DifficultyOptions) msg);
                     else if (msg instanceof Messages.Notifications) notifications.offer((Messages.Notifications) msg);
                     else if (msg instanceof Messages.GameOver) gameOvers.offer((Messages.GameOver) msg);
                     else if (msg instanceof Messages.TurnStatus) turnStatuses.offer((Messages.TurnStatus) msg);

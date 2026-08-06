@@ -43,6 +43,8 @@ public final class Protocol {
         register("gameStarted",    Messages.GameStarted.class);
         register("gameOver",       Messages.GameOver.class);
         register("raceOptions",    Messages.RaceOptions.class);
+        register("sizeOptions",    Messages.SizeOptions.class);
+        register("difficultyOptions", Messages.DifficultyOptions.class);
         register("pickRace",       Messages.PickRace.class);
         register("ready",          Messages.Ready.class);
         register("turnStatus",     Messages.TurnStatus.class);

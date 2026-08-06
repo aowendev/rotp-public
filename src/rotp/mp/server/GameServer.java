@@ -31,6 +31,7 @@ import rotp.model.galaxy.StarSystem;
 import rotp.model.game.GameSession;
 import rotp.model.game.IGameOptions;
 import rotp.model.game.MOO1GameOptions;
+import rotp.util.LabelManager;
 import rotp.model.ships.ShipDesign;
 import rotp.model.ships.ShipDesignLab;
 import rotp.model.tech.TechCategory;
@@ -53,9 +54,15 @@ import rotp.ui.diplomacy.DiplomaticReply;
  */
 public class GameServer extends WebSocketServer {
     private final int humanSlots;
-    /** IGameOptions.SIZE_* for the galaxy, or null to keep the ruleset default */
-    private final String galaxySize;
+    /** IGameOptions.SIZE_* for the galaxy, or null to keep the ruleset default;
+     * the CLI default, overridable by the host's lobby pick before the game starts */
+    private String galaxySize;
+    /** IGameOptions.DIFFICULTY_* = the AI's ability, or null to keep the ruleset
+     * default; set by the host's lobby pick before the game starts */
+    private String gameDifficulty;
     private final Map<WebSocket, Player> players = new LinkedHashMap<>();
+    /** players who dropped mid-game, kept by name so they can reconnect to their empire */
+    private final Map<String, Player> departed = new LinkedHashMap<>();
     /** serializes all game-state access (commands vs turn processing) */
     private final Object gameLock = new Object();
     private final NotificationCenter notiCenter = new NotificationCenter();
@@ -108,9 +115,17 @@ public class GameServer extends WebSocketServer {
         Player p;
         synchronized (this) {
             p = players.remove(conn);
+            // once the game is running, hold a dropped player's slot so they can
+            // reconnect to the same empire (matched by name in handleHello).
+            // Pre-start the slot is simply freed for someone else.
+            if ((p != null) && gameStarted)
+                departed.put(p.name, p);
+            if (conn == hostConn)
+                hostConn = null;
         }
         if (p != null) {
-            System.out.println("[server] "+p.name+" disconnected");
+            System.out.println("[server] "+p.name+" disconnected"
+                + (gameStarted ? " - empire "+p.empireId+" held for reconnect" : ""));
             broadcastLobby(p.name+" disconnected");
             // don't leave the turn blocked on a departed player
             maybeRunTurn();
@@ -186,13 +201,25 @@ public class GameServer extends WebSocketServer {
             conn.close();
             return;
         }
+        String name = (hello.playerName == null || hello.playerName.isEmpty()) ? "Player" : hello.playerName;
+
+        // a client that dropped mid-game rejoins its own empire (matched by name)
+        // instead of being turned away as "game full"
+        if (gameStarted) {
+            Player returning = departed.remove(name);
+            if (returning != null) {
+                reconnect(conn, returning);
+                return;
+            }
+        }
+
         if (gameStarted || players.size() >= humanSlots) {
             send(conn, error("Game is full"));
             conn.close();
             return;
         }
         Player p = new Player();
-        p.name = (hello.playerName == null || hello.playerName.isEmpty()) ? "Player" : hello.playerName;
+        p.name = name;
         p.empireId = players.size();   // slot order for now
         p.raceId = firstFreeRace();    // a distinct race per player by default
         players.put(conn, p);
@@ -206,11 +233,41 @@ public class GameServer extends WebSocketServer {
         joined.host = (conn == hostConn);
         send(conn, Protocol.encode(joined));
         send(conn, Protocol.encode(raceOptions()));
+        send(conn, Protocol.encode(sizeOptions()));
+        send(conn, Protocol.encode(difficultyOptions()));
         broadcastLobby(p.name+" joined");
 
         // auto-start once every human slot is filled (ruleset default AI count)
         if (players.size() == humanSlots)
             beginStart(-1);
+    }
+
+    /**
+     * Re-attach a returning client to the empire it left and replay enough state
+     * to resume play: game-started (so the client leaves the lobby and knows its
+     * empire) plus a fresh view. The ship-design catalog is re-requested by the
+     * client on its first view, so it need not be pushed here. Runs under the
+     * handleHello monitor.
+     */
+    private void reconnect(WebSocket conn, Player p) {
+        p.ready = false;              // a fresh turn; don't carry a stale ready flag
+        players.put(conn, p);
+        if (p.empireId == 0)
+            hostConn = conn;          // keep the host pointer on a live connection
+        System.out.println("[server] "+p.name+" reconnected as empire "+p.empireId);
+
+        Messages.GameStarted gs = new Messages.GameStarted();
+        gs.empireId = p.empireId;
+        send(conn, Protocol.encode(gs));
+
+        Empire emp = galaxy().empire(p.empireId);
+        if (emp != null) {
+            synchronized (gameLock) {
+                send(conn, Protocol.encode(PlayerViews.build(emp)));
+            }
+        }
+        // refresh everyone's ready counts now that the player is back
+        broadcastTurnStatus(p.name+" reconnected");
     }
 
     /** host asks to start now with the humans present, filling the rest with AI */
@@ -226,6 +283,24 @@ public class GameServer extends WebSocketServer {
         if (players.isEmpty()) {
             send(conn, error("No players present"));
             return;
+        }
+        // the host may override the galaxy size chosen at launch
+        if ((msg.galaxySize != null) && !msg.galaxySize.isEmpty()) {
+            if (!new MOO1GameOptions().galaxySizeOptions().contains(msg.galaxySize)) {
+                send(conn, error("Unknown galaxy size: "+msg.galaxySize));
+                return;
+            }
+            galaxySize = msg.galaxySize;
+            System.out.println("[server] host set galaxy size "+galaxySize);
+        }
+        // the host may set the difficulty (= AI ability)
+        if ((msg.difficulty != null) && !msg.difficulty.isEmpty()) {
+            if (!new MOO1GameOptions().gameDifficultyOptions().contains(msg.difficulty)) {
+                send(conn, error("Unknown difficulty: "+msg.difficulty));
+                return;
+            }
+            gameDifficulty = msg.difficulty;
+            System.out.println("[server] host set difficulty (AI ability) "+gameDifficulty);
         }
         beginStart(msg.aiOpponents);
     }
@@ -280,6 +355,40 @@ public class GameServer extends WebSocketServer {
         return STARTING_RACE_IDS[0];   // more players than races: fall back (shouldn't happen)
     }
 
+    /** the galaxy sizes the host may choose in the lobby, with readable labels
+     * and star counts, plus the size currently selected by default */
+    private Messages.SizeOptions sizeOptions() {
+        Messages.SizeOptions opts = new Messages.SizeOptions();
+        MOO1GameOptions scratch = new MOO1GameOptions();
+        for (String id : scratch.galaxySizeOptions()) {
+            scratch.selectedGalaxySize(id);
+            Messages.SizeInfo info = new Messages.SizeInfo();
+            info.id = id;
+            info.name = LabelManager.current().label(id);
+            info.stars = scratch.numberStarSystems();
+            opts.sizes.add(info);
+        }
+        opts.selectedId = (galaxySize != null) ? galaxySize : new MOO1GameOptions().selectedGalaxySize();
+        return opts;
+    }
+
+    /** the difficulty (= AI ability) levels the host may choose, each labelled with
+     * the AI's production strength so it's clear a higher level means a stronger AI */
+    private Messages.DifficultyOptions difficultyOptions() {
+        Messages.DifficultyOptions opts = new Messages.DifficultyOptions();
+        MOO1GameOptions scratch = new MOO1GameOptions();
+        for (String id : scratch.gameDifficultyOptions()) {
+            scratch.selectedGameDifficulty(id);
+            Messages.DifficultyInfo info = new Messages.DifficultyInfo();
+            info.id = id;
+            info.name = LabelManager.current().label(id);
+            info.aiProductionPct = Math.round(scratch.aiProductionModifier() * 100);
+            opts.levels.add(info);
+        }
+        opts.selectedId = (gameDifficulty != null) ? gameDifficulty : new MOO1GameOptions().selectedGameDifficulty();
+        return opts;
+    }
+
     private Messages.RaceOptions raceOptions() {
         Messages.RaceOptions opts = new Messages.RaceOptions();
         for (String id : STARTING_RACE_IDS) {
@@ -310,6 +419,8 @@ public class GameServer extends WebSocketServer {
         options.selectedAutoplayOption(IGameOptions.AUTOPLAY_AI_BASE);
         if (galaxySize != null)
             options.selectedGalaxySize(galaxySize);
+        if (gameDifficulty != null)
+            options.selectedGameDifficulty(gameDifficulty);   // = AI ability
 
         int humans = players.size();
         int opponents;

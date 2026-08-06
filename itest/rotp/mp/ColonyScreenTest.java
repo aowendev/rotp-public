@@ -22,7 +22,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
+import rotp.mp.MpTestSupport.Client;
+import rotp.mp.MpTestSupport.Server;
 import rotp.mp.client.ColonyAllocations;
 import rotp.mp.client.ColonyPanel;
 import rotp.mp.client.GalaxyViewPanel;
@@ -140,6 +143,30 @@ public class ColonyScreenTest {
             "clicking empty space misses");
     }
 
+    // ---- server-computed per-category result hints ----
+
+    @Test
+    @Timeout(120)
+    void serverProvidesPerCategoryResultHints() throws Exception {
+        Server server = MpTestSupport.startServer(1);
+        Client alice = new Client(server.port, "Alice");
+        try {
+            PlayerView v = alice.awaitView();
+            PlayerView.SystemDto home = MpTestSupport.ownColony(v);
+            assertNotNull(home, "player has a home colony");
+            assertNotNull(home.colony.result, "colony carries per-category result hints");
+            assertEquals(5, home.colony.result.length, "one hint per spending category");
+            for (int i = 0; i < 5; i++)
+                assertTrue((home.colony.result[i] != null) && !home.colony.result[i].isEmpty(),
+                    "category " + i + " has a non-empty, display-ready result hint (got: "
+                    + home.colony.result[i] + ")");
+        }
+        finally {
+            alice.close();
+            server.stop();
+        }
+    }
+
     private static PlayerView viewWithColony(int sysId, int[] alloc) {
         PlayerView v = new PlayerView();
         v.empireId = 0;
@@ -155,6 +182,7 @@ public class ColonyScreenTest {
         c.factories = 30;
         c.bases = 2;
         c.production = 12;
+        c.result = new String[]{"3 years", "5 years", "+8 BC/yr", "+2 pop", "45 RP"};
         s.colony = c;
         v.systems.add(s);
         assertTrue(ColonyAllocations.sum(alloc) == 50, "test fixture allocations sum to 50");

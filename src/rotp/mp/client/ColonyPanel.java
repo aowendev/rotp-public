@@ -61,6 +61,9 @@ public class ColonyPanel extends JPanel {
     private final JLabel readout = new JLabel(" ");
     private final JSlider[] sliders = new JSlider[5];
     private final JLabel[] valueLabels = new JLabel[5];
+    /** server-computed result hint per category (years to build, per-year output,
+     * ecology waste/clean/growth, research points) — see ColonyDto.result */
+    private final JLabel[] resultLabels = new JLabel[5];
     private final JLabel totalLabel = new JLabel(" ");
     private final JButton apply = new JButton("Apply spending");
 
@@ -77,7 +80,7 @@ public class ColonyPanel extends JPanel {
 
     public ColonyPanel(Consumer<Object> orderSender) {
         this.orderSender = orderSender;
-        setPreferredSize(new Dimension(320, 0));
+        setPreferredSize(new Dimension(400, 0));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         setLayout(new BorderLayout(0, 8));
 
@@ -97,6 +100,8 @@ public class ColonyPanel extends JPanel {
             s.addChangeListener(e -> onSliderChanged(idx));
             sliders[i] = s;
             valueLabels[i] = new JLabel("0%");
+            resultLabels[i] = new JLabel(" ");
+            resultLabels[i].setToolTipText("Projected result at the current spending");
 
             c.gridy = i;
             c.gridx = 0; c.weightx = 0;
@@ -105,6 +110,8 @@ public class ColonyPanel extends JPanel {
             grid.add(s, c);
             c.gridx = 2; c.weightx = 0;
             grid.add(valueLabels[i], c);
+            c.gridx = 3; c.weightx = 0;
+            grid.add(resultLabels[i], c);
         }
         add(grid, BorderLayout.CENTER);
 
@@ -179,6 +186,9 @@ public class ColonyPanel extends JPanel {
             int v = (col.alloc != null && i < col.alloc.length) ? col.alloc[i] : 0;
             sliders[i].setValue(v);
             sliders[i].setEnabled(!locked[i]);
+            String hint = (col.result != null && i < col.result.length) ? col.result[i] : null;
+            resultLabels[i].setText((hint == null) ? " " : hint);
+            resultLabels[i].setForeground(java.awt.Color.DARK_GRAY);
         }
         adjusting = false;
         loadBuild(col);
@@ -248,8 +258,13 @@ public class ColonyPanel extends JPanel {
 
     private void refreshLabels() {
         int[] a = currentSliderValues();
-        for (int i = 0; i < 5; i++)
+        // the result hints are the server's projection for the *applied* spending;
+        // once the user drags a slider they're stale, so dim them until re-applied
+        java.awt.Color hintColor = dirty ? java.awt.Color.LIGHT_GRAY : java.awt.Color.DARK_GRAY;
+        for (int i = 0; i < 5; i++) {
             valueLabels[i].setText((a[i] * 2) + "%" + (locked[i] ? " (locked)" : ""));
+            resultLabels[i].setForeground(hintColor);
+        }
         int total = ColonyAllocations.sum(a);
         totalLabel.setText("Allocated " + total + " / " + MAX_TICKS
             + (total == MAX_TICKS ? "" : "  (must total " + MAX_TICKS + ")"));

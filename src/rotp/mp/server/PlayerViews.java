@@ -110,9 +110,11 @@ public final class PlayerViews {
         PlayerView.ColonyDto c = new PlayerView.ColonyDto();
         c.alloc = new int[Colony.NUM_CATS];
         c.locked = new boolean[Colony.NUM_CATS];
+        c.result = new String[Colony.NUM_CATS];
         for (int i = 0; i < Colony.NUM_CATS; i++) {
             c.alloc[i] = col.allocation(i);
             c.locked[i] = col.locked(i);
+            c.result[i] = categoryResult(col, i);
         }
         c.population = col.population();
         c.factories = col.industry().factories();
@@ -125,6 +127,30 @@ public final class PlayerViews {
         c.transportSize = (int) col.inTransport();
         c.transportDestId = (dest == null) ? -1 : dest.id;
         return c;
+    }
+
+    /**
+     * The colony screen's per-category result hint for the current spending — the
+     * same projection the desktop UI shows next to each slider: Ship/Def years to
+     * complete, Ind output per year, Eco waste/clean/growth, Tech research points.
+     * ROTP's `upcomingResult()` returns display-ready text; a couple of branches
+     * hand back a raw label key instead, so resolve those defensively.
+     *
+     * Ecology is special-cased: `upcomingResult()` only says "Growth" once the
+     * colony is growing, but the useful number is how many population it will add,
+     * so report "+n pop" (via `upcomingPopGrowth()`) when there is growth, and fall
+     * back to the state word (Waste / Clean / terraforming) otherwise.
+     */
+    private static String categoryResult(Colony col, int cat) {
+        if (cat == Colony.ECOLOGY) {
+            int growth = col.ecology().upcomingPopGrowth();
+            if (growth > 0)
+                return "+" + growth + " pop";
+        }
+        String r = col.category(cat).upcomingResult();
+        if ((r != null) && r.startsWith("MAIN_"))
+            r = rotp.util.LabelManager.current().label(r);
+        return r;
     }
 
     private static PlayerView.TechDto techDto(TechTree tech) {
