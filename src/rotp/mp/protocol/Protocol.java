@@ -51,6 +51,9 @@ public final class Protocol {
         register("error",          Messages.Error.class);
         register("view",           PlayerView.class);
         register("setColonyAlloc", Messages.SetColonyAllocations.class);
+        register("previewColony",  Messages.PreviewColony.class);
+        register("colonyPreview",  Messages.ColonyPreview.class);
+        register("setColonyLock",  Messages.SetColonyLock.class);
         register("setTechAlloc",   Messages.SetTechAllocations.class);
         register("setResearchChoice", Messages.SetResearchChoice.class);
         register("deployFleet",    Messages.DeployFleet.class);

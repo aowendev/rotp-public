@@ -64,7 +64,15 @@ public class ColonyPanel extends JPanel {
     /** server-computed result hint per category (years to build, per-year output,
      * ecology waste/clean/growth, research points) — see ColonyDto.result */
     private final JLabel[] resultLabels = new JLabel[5];
+    /** per-category lock: a locked category holds its value during redistribution */
+    private final javax.swing.JCheckBox[] lockChecks = new javax.swing.JCheckBox[5];
     private final JLabel totalLabel = new JLabel(" ");
+
+    /** committed (applied) hint color vs a live server-computed preview of edits */
+    private static final java.awt.Color HINT_APPLIED = java.awt.Color.DARK_GRAY;
+    private static final java.awt.Color HINT_PREVIEW = new java.awt.Color(40, 90, 165);
+    /** debounce for the live projection request while dragging sliders */
+    private final javax.swing.Timer previewTimer;
     private final JButton apply = new JButton("Apply spending");
 
     // which design this colony builds (setShipBuild)
@@ -80,7 +88,9 @@ public class ColonyPanel extends JPanel {
 
     public ColonyPanel(Consumer<Object> orderSender) {
         this.orderSender = orderSender;
-        setPreferredSize(new Dimension(400, 0));
+        previewTimer = new javax.swing.Timer(150, e -> sendPreview());
+        previewTimer.setRepeats(false);
+        setPreferredSize(new Dimension(440, 0));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         setLayout(new BorderLayout(0, 8));
 
@@ -102,6 +112,10 @@ public class ColonyPanel extends JPanel {
             valueLabels[i] = new JLabel("0%");
             resultLabels[i] = new JLabel(" ");
             resultLabels[i].setToolTipText("Projected result at the current spending");
+            javax.swing.JCheckBox lock = new javax.swing.JCheckBox();
+            lock.setToolTipText("Lock this category so it keeps its value when others change");
+            lock.addActionListener(e -> onLockToggled(idx));
+            lockChecks[i] = lock;
 
             c.gridy = i;
             c.gridx = 0; c.weightx = 0;
@@ -112,6 +126,8 @@ public class ColonyPanel extends JPanel {
             grid.add(valueLabels[i], c);
             c.gridx = 3; c.weightx = 0;
             grid.add(resultLabels[i], c);
+            c.gridx = 4; c.weightx = 0;
+            grid.add(lock, c);
         }
         add(grid, BorderLayout.CENTER);
 
@@ -178,17 +194,22 @@ public class ColonyPanel extends JPanel {
     private void load(PlayerView.SystemDto sys) {
         PlayerView.ColonyDto col = sys.colony;
         title.setText(sys.name.isEmpty() ? ("System " + sys.id) : sys.name);
-        readout.setText(String.format("<html>pop %d &nbsp; factories %d &nbsp; bases %d<br>production %d BC/turn</html>",
-            Math.round(col.population), Math.round(col.factories), Math.round(col.bases), Math.round(col.production)));
+        String growth = col.popGrowth > 0 ? " (+" + col.popGrowth + "/yr)" : "";
+        String wasteStr = col.waste >= 1 ? String.format(" &nbsp; waste %d", Math.round(col.waste)) : "";
+        readout.setText(String.format(
+            "<html>pop %d / %d%s &nbsp; planet size %d<br>factories %d &nbsp; bases %d%s<br>production %d BC/turn</html>",
+            Math.round(col.population), Math.round(col.maxSize), growth, Math.round(col.planetSize),
+            Math.round(col.factories), Math.round(col.bases), wasteStr, Math.round(col.production)));
         locked = (col.locked != null) ? col.locked.clone() : new boolean[5];
         adjusting = true;
         for (int i = 0; i < 5; i++) {
             int v = (col.alloc != null && i < col.alloc.length) ? col.alloc[i] : 0;
             sliders[i].setValue(v);
             sliders[i].setEnabled(!locked[i]);
+            lockChecks[i].setSelected(locked[i]);   // setSelected does not fire the action listener
             String hint = (col.result != null && i < col.result.length) ? col.result[i] : null;
             resultLabels[i].setText((hint == null) ? " " : hint);
-            resultLabels[i].setForeground(java.awt.Color.DARK_GRAY);
+            resultLabels[i].setForeground(HINT_APPLIED);   // these reflect the applied spending
         }
         adjusting = false;
         loadBuild(col);
@@ -243,6 +264,52 @@ public class ColonyPanel extends JPanel {
         adjusting = false;
         dirty = true;
         refreshLabels();
+        // ask the server for a live projection of the edited spending (debounced)
+        if (systemId >= 0)
+            previewTimer.restart();
+    }
+
+    /** ask the server to project the current (uncommitted) spending split */
+    private void sendPreview() {
+        if ((systemId < 0) || !dirty)
+            return;
+        Messages.PreviewColony msg = new Messages.PreviewColony();
+        msg.systemId = systemId;
+        msg.alloc = currentSliderValues();
+        orderSender.accept(msg);
+    }
+
+    /** server's projection for a previewed spending split; show it in the preview colour */
+    public void onPreview(Messages.ColonyPreview pv) {
+        if ((pv == null) || (pv.systemId != systemId) || (pv.result == null))
+            return;
+        for (int i = 0; i < 5 && i < pv.result.length; i++) {
+            resultLabels[i].setText((pv.result[i] == null) ? " " : pv.result[i]);
+            resultLabels[i].setForeground(HINT_PREVIEW);
+        }
+    }
+
+    private void onLockToggled(int idx) {
+        if (systemId < 0)
+            return;
+        boolean lock = lockChecks[idx].isSelected();
+        locked[idx] = lock;
+        sliders[idx].setEnabled(!lock);
+        // if locking while there are unsent slider edits, commit them first so the
+        // value being locked is the one shown — otherwise the server locks the
+        // previously-applied value and later rejects the edit as "locked"
+        if (lock && dirty && ColonyAllocations.sum(currentSliderValues()) == MAX_TICKS) {
+            Messages.SetColonyAllocations alloc = new Messages.SetColonyAllocations();
+            alloc.systemId = systemId;
+            alloc.alloc = currentSliderValues();
+            orderSender.accept(alloc);
+            dirty = false;
+        }
+        Messages.SetColonyLock msg = new Messages.SetColonyLock();
+        msg.systemId = systemId;
+        msg.category = idx;
+        msg.locked = lock;
+        orderSender.accept(msg);
     }
 
     private void sendOrder() {
@@ -258,13 +325,10 @@ public class ColonyPanel extends JPanel {
 
     private void refreshLabels() {
         int[] a = currentSliderValues();
-        // the result hints are the server's projection for the *applied* spending;
-        // once the user drags a slider they're stale, so dim them until re-applied
-        java.awt.Color hintColor = dirty ? java.awt.Color.LIGHT_GRAY : java.awt.Color.DARK_GRAY;
-        for (int i = 0; i < 5; i++) {
+        // result-hint colours are managed by load() (applied) and onPreview() (live);
+        // here we only refresh the percentages and the lock annotation
+        for (int i = 0; i < 5; i++)
             valueLabels[i].setText((a[i] * 2) + "%" + (locked[i] ? " (locked)" : ""));
-            resultLabels[i].setForeground(hintColor);
-        }
         int total = ColonyAllocations.sum(a);
         totalLabel.setText("Allocated " + total + " / " + MAX_TICKS
             + (total == MAX_TICKS ? "" : "  (must total " + MAX_TICKS + ")"));
@@ -272,8 +336,10 @@ public class ColonyPanel extends JPanel {
     }
 
     private void setEnabledControls(boolean on) {
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 5; i++) {
             sliders[i].setEnabled(on && !locked[i]);
+            lockChecks[i].setEnabled(on);
+        }
         apply.setEnabled(false);
         buildCombo.setEnabled(on);
         buildLimit.setEnabled(on);

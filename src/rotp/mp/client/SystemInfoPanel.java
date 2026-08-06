@@ -119,7 +119,7 @@ public class SystemInfoPanel extends JPanel {
     }
 
     private static String rangeLine(PlayerView.SystemDto s) {
-        String dist = "Distance: " + Math.round(s.distance) + " ly &mdash; ";
+        String dist = String.format("Distance: %.1f ly &mdash; ", s.distance);
         return dist + (s.inShipRange
             ? "within ship range"
             : "<b>beyond ship range</b> (colony ships can't reach; a scout might)");

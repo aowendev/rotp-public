@@ -213,11 +213,12 @@ public class FleetsPanel extends JPanel {
         }
         if (tooFar.isEmpty()) {
             rangeWarn.setForeground(java.awt.Color.GRAY);
-            rangeWarn.setText(String.format("Destination %.0f ly away — in range.", dist));
+            rangeWarn.setText(String.format("Destination %.1f ly away — in range.", dist));
         }
         else {
             rangeWarn.setForeground(new java.awt.Color(170, 40, 40));
-            rangeWarn.setText("Out of range for: " + String.join(", ", tooFar));
+            rangeWarn.setText(String.format("Destination %.1f ly away — out of range for: %s",
+                dist, String.join(", ", tooFar)));
         }
     }
 

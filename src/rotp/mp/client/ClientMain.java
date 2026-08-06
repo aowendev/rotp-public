@@ -367,6 +367,9 @@ public class ClientMain {
         else if (msg instanceof Messages.DesignCatalog) {
             shipDesignPanel.setCatalog((Messages.DesignCatalog) msg);
         }
+        else if (msg instanceof Messages.ColonyPreview) {
+            colonyPanel.onPreview((Messages.ColonyPreview) msg);
+        }
         else if (msg instanceof Messages.DiploReply) {
             Messages.DiploReply dr = (Messages.DiploReply) msg;
             racesPanel.showReply(dr);

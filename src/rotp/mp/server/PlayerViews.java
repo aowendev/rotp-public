@@ -110,13 +110,16 @@ public final class PlayerViews {
         PlayerView.ColonyDto c = new PlayerView.ColonyDto();
         c.alloc = new int[Colony.NUM_CATS];
         c.locked = new boolean[Colony.NUM_CATS];
-        c.result = new String[Colony.NUM_CATS];
         for (int i = 0; i < Colony.NUM_CATS; i++) {
             c.alloc[i] = col.allocation(i);
             c.locked[i] = col.locked(i);
-            c.result[i] = categoryResult(col, i);
         }
+        c.result = colonyResults(col);
         c.population = col.population();
+        c.maxSize = col.maxSize();
+        c.planetSize = col.planet().currentSize();
+        c.waste = col.ecology().waste();
+        c.popGrowth = col.ecology().upcomingPopGrowth();
         c.factories = col.industry().factories();
         c.bases = col.defense().bases();
         c.production = col.production();
@@ -127,6 +130,15 @@ public final class PlayerViews {
         c.transportSize = (int) col.inTransport();
         c.transportDestId = (dest == null) ? -1 : dest.id;
         return c;
+    }
+
+    /** the per-category result hints for a colony's current allocations, in
+     * ColonyDto.result order; reused for the live spending preview */
+    public static String[] colonyResults(Colony col) {
+        String[] r = new String[Colony.NUM_CATS];
+        for (int i = 0; i < Colony.NUM_CATS; i++)
+            r[i] = categoryResult(col, i);
+        return r;
     }
 
     /**

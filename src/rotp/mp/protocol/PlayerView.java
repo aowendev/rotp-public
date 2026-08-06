@@ -95,6 +95,10 @@ public final class PlayerView {
          * One entry per category (indices as above). */
         public String[] result;
         public float population;
+        public float maxSize;         // population capacity (max pop this planet can hold)
+        public float planetSize;      // current planet size (base + terraforming)
+        public float waste;           // industrial waste awaiting cleanup
+        public int popGrowth;         // expected population added next turn
         public float factories;
         public float bases;
         public float production;      // BC produced this turn

@@ -16,6 +16,7 @@
 package rotp.mp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -165,6 +166,153 @@ public class ColonyScreenTest {
             alice.close();
             server.stop();
         }
+    }
+
+    @Test
+    @Timeout(120)
+    void applyingNewSpendingRecomputesTheResultHints() throws Exception {
+        Server server = MpTestSupport.startServer(1);
+        Client alice = new Client(server.port, "Alice");
+        try {
+            PlayerView v = alice.awaitView();
+            PlayerView.SystemDto home = MpTestSupport.ownColony(v);
+            String techBefore = home.colony.result[4];   // Tech, typically "None" at start
+
+            rotp.mp.protocol.Messages.SetColonyAllocations ca =
+                new rotp.mp.protocol.Messages.SetColonyAllocations();
+            ca.systemId = home.id;
+            ca.alloc = new int[]{0, 0, 0, 0, 50};          // everything into research
+            assertTrue(alice.order(ca).ok, "the colony allocation is applied");
+
+            PlayerView.SystemDto home2 = MpTestSupport.system(alice.lastView, home.id);
+            String techAfter = home2.colony.result[4];
+            org.junit.jupiter.api.Assertions.assertNotEquals(techBefore, techAfter,
+                "the Tech result hint changes once research is funded (was '" + techBefore
+                + "', now '" + techAfter + "')");
+        }
+        finally {
+            alice.close();
+            server.stop();
+        }
+    }
+
+    @Test
+    @Timeout(120)
+    void previewProjectsSpendingWithoutCommitting() throws Exception {
+        Server server = MpTestSupport.startServer(1);
+        Client alice = new Client(server.port, "Alice");
+        try {
+            PlayerView v = alice.awaitView();
+            PlayerView.SystemDto home = MpTestSupport.ownColony(v);
+            int[] committedBefore = home.colony.alloc.clone();
+
+            // ask for a projection of "all research" without committing it
+            rotp.mp.protocol.Messages.PreviewColony pc = new rotp.mp.protocol.Messages.PreviewColony();
+            pc.systemId = home.id;
+            pc.alloc = new int[]{0, 0, 0, 0, 50};
+            alice.raw(pc);
+            rotp.mp.protocol.Messages.ColonyPreview pv =
+                alice.colonyPreviews.poll(10, java.util.concurrent.TimeUnit.SECONDS);
+            assertNotNull(pv, "server returns a projection for the previewed spending");
+            assertEquals(home.id, pv.systemId, "projection is for the previewed colony");
+            assertEquals(5, pv.result.length, "one projected hint per category");
+            assertTrue((pv.result[4] != null) && !"None".equals(pv.result[4]),
+                "the Tech projection reflects the previewed research (got '" + pv.result[4] + "')");
+
+            // the preview must not have changed the real allocation: a no-op lock
+            // command returns a fresh view we can inspect
+            rotp.mp.protocol.Messages.SetColonyLock noop = new rotp.mp.protocol.Messages.SetColonyLock();
+            noop.systemId = home.id; noop.category = 0; noop.locked = false;
+            assertTrue(alice.order(noop).ok, "no-op lock accepted");
+            PlayerView.SystemDto home2 = MpTestSupport.system(alice.lastView, home.id);
+            org.junit.jupiter.api.Assertions.assertArrayEquals(committedBefore, home2.colony.alloc,
+                "the preview did not commit the hypothetical spending");
+        }
+        finally {
+            alice.close();
+            server.stop();
+        }
+    }
+
+    @Test
+    @Timeout(120)
+    void lockingACategoryProtectsItAndIsReflectedInTheView() throws Exception {
+        Server server = MpTestSupport.startServer(1);
+        Client alice = new Client(server.port, "Alice");
+        try {
+            PlayerView v = alice.awaitView();
+            PlayerView.SystemDto home = MpTestSupport.ownColony(v);
+            int ecoBefore = home.colony.alloc[3];
+
+            // lock ecology
+            rotp.mp.protocol.Messages.SetColonyLock lock = new rotp.mp.protocol.Messages.SetColonyLock();
+            lock.systemId = home.id; lock.category = 3; lock.locked = true;
+            assertTrue(alice.order(lock).ok, "locking ecology is accepted");
+            assertTrue(MpTestSupport.system(alice.lastView, home.id).colony.locked[3],
+                "the lock is reflected in the view");
+
+            // an allocation that would move the locked category is rejected
+            rotp.mp.protocol.Messages.SetColonyAllocations move =
+                new rotp.mp.protocol.Messages.SetColonyAllocations();
+            move.systemId = home.id;
+            int[] a = new int[]{0, 0, 25, ecoBefore == 0 ? 25 : 0, 0};   // deliberately change ecology
+            int s = 0; for (int x : a) s += x;
+            a[2] += (50 - s);   // pad industry so it sums to 50
+            move.alloc = a;
+            assertFalse(alice.order(move).ok, "changing a locked category is rejected");
+
+            // unlocking clears it
+            lock.locked = false;
+            assertTrue(alice.order(lock).ok, "unlocking is accepted");
+            assertFalse(MpTestSupport.system(alice.lastView, home.id).colony.locked[3],
+                "the category is no longer locked");
+        }
+        finally {
+            alice.close();
+            server.stop();
+        }
+    }
+
+    @Test
+    @Timeout(240)
+    void lockedEcologyHoldsBelowMaxThenDropsToCleanAtMaxPop() throws Exception {
+        Server server = MpTestSupport.startServer(1);
+        Client alice = new Client(server.port, "Alice");
+        try {
+            PlayerView v = alice.awaitView();
+            PlayerView.SystemDto home = MpTestSupport.ownColony(v);
+            rotp.mp.protocol.Messages.SetColonyAllocations ca = new rotp.mp.protocol.Messages.SetColonyAllocations();
+            ca.systemId = home.id;
+            ca.alloc = new int[]{0, 0, 20, 30, 0};                 // ecology 30 ticks
+            assertTrue(alice.order(ca).ok, "high-ecology split applied");
+            rotp.mp.protocol.Messages.SetColonyLock lk = new rotp.mp.protocol.Messages.SetColonyLock();
+            lk.systemId = home.id; lk.category = 3; lk.locked = true;
+            assertTrue(alice.order(lk).ok, "ecology locked");
+
+            boolean droppedAtMax = false;
+            for (int t = 0; t < 40; t++) {
+                alice.ready();
+                PlayerView.SystemDto h = MpTestSupport.system(alice.lastView, home.id);
+                boolean maxed = h.colony.population >= h.colony.maxSize - 0.5f;
+                if (!maxed) {
+                    // below max pop the lock is honoured exactly
+                    assertEquals(30, h.colony.alloc[3],
+                        "below max pop, locked ecology holds its ticks (turn " + alice.lastView.turn + ")");
+                } else {
+                    // at max pop the locked ecology is dropped to the cleanup minimum,
+                    // and the freed ticks are redistributed off ecology
+                    assertTrue(h.colony.alloc[3] < 30,
+                        "at max pop the locked ecology drops below its locked value (was 30, now "
+                        + h.colony.alloc[3] + ")");
+                    assertEquals(50, ColonyAllocations.sum(h.colony.alloc), "still fully allocated");
+                    assertTrue(h.colony.locked[3], "the ecology lock flag is preserved");
+                    droppedAtMax = true;
+                    break;
+                }
+            }
+            assertTrue(droppedAtMax, "the colony reached max pop and ecology dropped to clean");
+        }
+        finally { alice.close(); server.stop(); }
     }
 
     private static PlayerView viewWithColony(int sysId, int[] alloc) {

@@ -5,7 +5,7 @@ how to run what exists, and exactly what to do next. The full design rationale i
 in [`multiplayer-design.md`](multiplayer-design.md); this is the operational
 "pick up here" note.
 
-_Last updated: 2026-08-06 — Phase 1.5 backlog addressed; **Phase 2 session-completeness work landed** during a live solo test session: a **Races/diplomacy client panel** (⌘R — the outgoing diplomacy commands finally have a UI), **client reconnection** (a dropped client rejoins its empire by name, so a game survives a client relaunch), and a **lobby galaxy-size picker** and an **"AI ability" (difficulty) picker** (host chooses size + AI strength before Start), and **per-category colony result hints** (each spending slider shows years-to-complete / output-per-year / waste-clean-or-+n-pop / research points, computed server-side). 51 tests green. Remaining: one human sign-off playthrough to final win/loss. See "Do this next"._
+_Last updated: 2026-08-06 — Phase 1.5 backlog addressed; **Phase 2 session-completeness work landed** during a live solo test session: a **Races/diplomacy client panel** (⌘R — the outgoing diplomacy commands finally have a UI), **client reconnection** (a dropped client rejoins its empire by name, so a game survives a client relaunch), and a **lobby galaxy-size picker** and an **"AI ability" (difficulty) picker** (host chooses size + AI strength before Start), and **colony spending upgrades** (per-category result hints — years-to-complete / output-per-year / waste-clean-or-+n-pop / research points — plus **live server-computed projections while dragging** and **per-category locks**). 55 tests green. Remaining: one human sign-off playthrough to final win/loss. See "Do this next"._
 
 ## Where we are
 
@@ -20,8 +20,8 @@ game model. We-go turns; per-empire notifications (contact/diplomacy/colony/tech
 a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
-show **per-category result hints** (years/output/growth/RP). **51 JUnit
-integration tests, green.**
+show **per-category result hints** (years/output/growth/RP) with **live
+projections and per-category locks**. **55 JUnit integration tests, green.**
 
 **Continuing Phase 2** (LAN & session completeness) — see "Do this next".
 Built on `7a2cdd95` (Phase 2 lobby AI-fill); the Races panel, client reconnection,
@@ -82,9 +82,21 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   shows a **per-category result hint** beside each slider — years-to-complete
   (Ship/Def), output per year (Ind), Waste/Clean/+n pop (Eco), and research points
   (Tech) — computed server-side via each category's `upcomingResult()` and carried
-  in `ColonyDto.result` (the client runs no game math; hints dim while a slider has
-  unsent edits, since they reflect the applied spending). `ResearchPanel` lets the
-  player choose each category's research target
+  in `ColonyDto.result` (the client runs no game math). The hints update **live
+  while you drag**: the client sends a debounced `previewColony` (a hypothetical
+  spend), the server projects the result without committing it (saves/sets/restores
+  the allocations under `gameLock`) and replies `colonyPreview`; live projections
+  show in blue, applied ones in grey. Each slider has a **lock** checkbox
+  (`setColonyLock`) so a category holds its value during redistribution — e.g.
+  keep ecology at "clean" while shifting the rest (locking with unsent edits
+  commits the shown value first, so you lock what you see). The colony readout
+  shows pop/max-pop (+growth/yr), planet size, factories, bases, waste, and
+  production. **Ecology-at-max:** once a colony reaches max population, a locked
+  ecology is auto-dropped to the cleanup minimum and the freed ticks go to the
+  player's other unlocked categories (server-side, each turn, in
+  `GameServer.lowerMaxedColonyEcoToClean()` — it bypasses the ecology lock around
+  the engine's `lowerECOToCleanIfEcoComplete()`; the lock flag is preserved).
+  `ResearchPanel` lets the player choose each category's research target
   (`setResearchChoice`, dropdowns); `EmpirePanel` (Planet List ⌘P) is a read-only
   overview. Map clicks set the fleet-deploy destination. This is the
   **core-playable screen set**; the full economy→build→expand loop is clickable
@@ -113,7 +125,7 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   applied via `selectedGameDifficulty`. Deliberately labelled **"AI ability"** on
   the client, since the level scales the AI's economy (a stronger opponent), not a
   human puzzle-difficulty. See the option-set-mismatch TODO under Phase 2.
-- Verified by `itest/rotp/mp/` (51 tests): order/isolation, design/transport,
+- Verified by `itest/rotp/mp/` (55 tests): order/isolation, design/transport,
   spy/diplomacy (also assert notification delivery incl. TECH), the colony /
   research / fleets / ship-design / empire-overview screens (redistribution, DTO
   load, map click hit-test + fleet-destination, build-option load, research-choice
@@ -319,6 +331,14 @@ Phase 5 (browser client). See design doc §7.
   `MpTestSupport.bootEngine()`.
 - **Small hulls are tight.** A MOO1 nuclear bomb doesn't fit a small hull with
   default fittings — tests use a medium hull. Not a bug.
+- **Ship range is 3.0 LY and is NOT galaxy-size-scaled.** Base range =
+  `TechFuelRange` quintile-0 (`3`) × `options.fuelRangeMultiplier()` (default `1.0`,
+  driven by the *fuel-range option*, not galaxy size). The engine's in-range check
+  is float (`distance <= shipRange()`), so a star 3.2 LY away is genuinely out of a
+  3.0 range — the panels now show one decimal (`3.2 ly`) so it no longer looks like
+  a reachable "3 ly". Caveat: `ShipDesign.range()` truncates to `int`, so under a
+  non-default fuel-range multiplier (e.g. 1.5 → 4.5) `DesignDto.range` loses the
+  fraction; harmless at the default multiplier where ranges are whole numbers.
 - **Unseeded RNG.** `Base.random` is unseeded, so galaxy geometry and contact
   timing vary run to run. Geography-dependent test paths use JUnit assumptions to
   skip (not fail). Seeding the RNG for deterministic tests is a worthwhile future

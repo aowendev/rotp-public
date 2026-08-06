@@ -154,6 +154,32 @@ public final class Messages {
         public int[] alloc;
     }
 
+    /**
+     * client -> server: ask for the projected per-category result of a hypothetical
+     * spending split *without* committing it, so the colony screen can show live
+     * projections as the sliders move. The server replies with a colonyPreview.
+     */
+    public static class PreviewColony {
+        public int systemId;
+        public int[] alloc;
+    }
+
+    /** server -> client: the projected result hints for a previewed spending split */
+    public static class ColonyPreview {
+        public int systemId;
+        public String[] result;   // one entry per spending category, same order as ColonyDto.result
+    }
+
+    /**
+     * lock or unlock one spending category on a colony, so redistribution leaves
+     * it untouched (e.g. hold ecology at "clean"). Reflected back in ColonyDto.locked.
+     */
+    public static class SetColonyLock {
+        public int systemId;
+        public int category;      // 0=ship 1=def 2=ind 3=eco 4=tech
+        public boolean locked;
+    }
+
     /** replace empire research allocation; 6 categories, ticks 0-60 each, sum <= 60 */
     public static class SetTechAllocations {
         public int[] alloc;

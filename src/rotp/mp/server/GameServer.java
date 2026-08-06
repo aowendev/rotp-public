@@ -153,6 +153,10 @@ public class GameServer extends WebSocketServer {
             handleReady(conn, (Messages.Ready) msg);
         else if (msg instanceof Messages.SetColonyAllocations)
             handleCommand(conn, "setColonyAlloc", (Messages.SetColonyAllocations) msg);
+        else if (msg instanceof Messages.PreviewColony)
+            handlePreviewColony(conn, (Messages.PreviewColony) msg);
+        else if (msg instanceof Messages.SetColonyLock)
+            handleCommand(conn, "setColonyLock", (Messages.SetColonyLock) msg);
         else if (msg instanceof Messages.SetTechAllocations)
             handleCommand(conn, "setTechAlloc", (Messages.SetTechAllocations) msg);
         else if (msg instanceof Messages.SetResearchChoice)
@@ -571,6 +575,7 @@ public class GameServer extends WebSocketServer {
                 for (Player p : players.values())
                     p.ready = false;
             }
+            lowerMaxedColonyEcoToClean();
             broadcastNotifications();
             broadcastViews();
             checkGameOver();
@@ -609,6 +614,8 @@ public class GameServer extends WebSocketServer {
         synchronized (gameLock) {
             if (cmd instanceof Messages.SetColonyAllocations)
                 err = applyColonyAllocations(emp, (Messages.SetColonyAllocations) cmd);
+            else if (cmd instanceof Messages.SetColonyLock)
+                err = applySetColonyLock(emp, (Messages.SetColonyLock) cmd);
             else if (cmd instanceof Messages.SetTechAllocations)
                 err = applyTechAllocations(emp, (Messages.SetTechAllocations) cmd);
             else if (cmd instanceof Messages.SetResearchChoice)
@@ -676,6 +683,100 @@ public class GameServer extends WebSocketServer {
         for (int i = 0; i < Colony.NUM_CATS; i++)
             col.allocation(i, alloc[i]);
         return null;
+    }
+
+    /**
+     * After a turn resolves, keep each remote human's maxed-out colonies at the
+     * ecology "clean" minimum even when the player locked ecology, so the surplus
+     * ticks go to their other (unlocked) categories instead of the reserve. The
+     * engine's own {@code lowerECOToCleanIfEcoComplete()} does exactly this (drops
+     * eco to clean + realigns the rest, respecting other locks) but bails if
+     * ecology is locked — so we clear the ecology lock around the call and restore
+     * it afterward (the lock flag is kept; only the value is auto-managed at max).
+     * Remote-human only; AI empires are handled by their own treasurer.
+     */
+    private void lowerMaxedColonyEcoToClean() {
+        synchronized (gameLock) {
+            for (Empire emp : galaxy().empires()) {
+                if (!emp.isRemoteHuman())
+                    continue;
+                for (StarSystem sys : emp.allColonizedSystems()) {
+                    if (!sys.isColonized())
+                        continue;
+                    Colony col = sys.colony();
+                    if (!col.ecology().isCompleted())
+                        continue;   // only once the colony is done growing/terraforming
+                    boolean wasLocked = col.locked(Colony.ECOLOGY);
+                    if (wasLocked)
+                        col.locked(Colony.ECOLOGY, false);
+                    col.lowerECOToCleanIfEcoComplete();
+                    if (wasLocked)
+                        col.locked(Colony.ECOLOGY, true);
+                }
+            }
+        }
+    }
+
+    private String applySetColonyLock(Empire emp, Messages.SetColonyLock cmd) {
+        StarSystem sys = galaxy().system(cmd.systemId);
+        if (sys == null)
+            return "No such system";
+        if ((sys.empire() != emp) || !sys.isColonized())
+            return "Not your colony";
+        if ((cmd.category < 0) || (cmd.category >= Colony.NUM_CATS))
+            return "Category must be 0-" + (Colony.NUM_CATS - 1);
+        sys.colony().locked(cmd.category, cmd.locked);
+        return null;
+    }
+
+    /**
+     * Compute the per-category result projection for a hypothetical spending split
+     * without committing it, so the colony screen can show live projections while
+     * the sliders move. Read-only: the colony's real allocations are saved, the
+     * hypothetical is applied just long enough to read the projection, then restored
+     * (all under gameLock, so no turn or command observes the transient state).
+     * Best-effort — an invalid or ill-timed request is silently ignored.
+     */
+    private void handlePreviewColony(WebSocket conn, Messages.PreviewColony msg) {
+        Player p;
+        synchronized (this) {
+            p = players.get(conn);
+        }
+        if ((p == null) || !gameStarted || turnRunning)
+            return;
+        Empire emp = galaxy().empire(p.empireId);
+        StarSystem sys = galaxy().system(msg.systemId);
+        if ((sys == null) || (sys.empire() != emp) || !sys.isColonized())
+            return;
+        int[] alloc = msg.alloc;
+        if ((alloc == null) || (alloc.length != Colony.NUM_CATS))
+            return;
+        int sum = 0;
+        for (int a : alloc) {
+            if (a < 0)
+                return;
+            sum += a;
+        }
+        if (sum != rotp.model.colony.ColonySpendingCategory.MAX_TICKS)
+            return;
+        Colony col = sys.colony();
+        for (int i = 0; i < Colony.NUM_CATS; i++)
+            if (col.locked(i) && (alloc[i] != col.allocation(i)))
+                return;   // a preview that moves a locked category is meaningless
+
+        Messages.ColonyPreview pv = new Messages.ColonyPreview();
+        pv.systemId = msg.systemId;
+        synchronized (gameLock) {
+            int[] saved = new int[Colony.NUM_CATS];
+            for (int i = 0; i < Colony.NUM_CATS; i++)
+                saved[i] = col.allocation(i);
+            for (int i = 0; i < Colony.NUM_CATS; i++)
+                col.allocation(i, alloc[i]);
+            pv.result = PlayerViews.colonyResults(col);
+            for (int i = 0; i < Colony.NUM_CATS; i++)
+                col.allocation(i, saved[i]);
+        }
+        send(conn, Protocol.encode(pv));
     }
 
     private String applyResearchChoice(Empire emp, Messages.SetResearchChoice cmd) {
