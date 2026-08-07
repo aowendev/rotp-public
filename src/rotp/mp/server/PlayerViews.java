@@ -49,6 +49,10 @@ public final class PlayerViews {
         v.colorId = emp.colorId();
 
         v.internalSecurity = emp.internalSecurity();
+        v.reserve = emp.totalReserve();
+        v.totalIncome = emp.totalIncome();
+        v.netIncome = emp.netIncome();
+        v.maintenanceCost = emp.totalShipMaintenanceCost() + emp.totalStargateCost() + emp.totalMissileBaseCost();
         for (Empire e : gal.empires()) {
             if ((e != emp) && !emp.hasContact(e))
                 continue;
@@ -123,6 +127,8 @@ public final class PlayerViews {
         c.planetSize = col.planet().currentSize();
         c.waste = col.ecology().waste();
         c.popGrowth = col.ecology().upcomingPopGrowth();
+        c.shield = col.defense().shieldLevel();
+        c.notes = colonyNotes(col);
         c.factories = col.industry().factories();
         c.bases = col.defense().bases();
         c.production = col.production();
@@ -133,6 +139,23 @@ public final class PlayerViews {
         c.transportSize = (int) col.inTransport();
         c.transportDestId = (dest == null) ? -1 : dest.id;
         return c;
+    }
+
+    /** status notes for a colony (rebellion, plague quarantine, a space monster in
+     * the system, or a custom system note) — the Notes column of the planets list */
+    private static String colonyNotes(Colony col) {
+        java.util.List<String> notes = new java.util.ArrayList<>();
+        if (col.inRebellion())
+            notes.add("Rebellion " + Math.round(col.rebellionPct() * 100) + "%");
+        if (col.quarantined())
+            notes.add("Quarantine");
+        StarSystem sys = col.starSystem();
+        if ((sys != null) && sys.hasMonster())
+            notes.add("Space monster");
+        String custom = (sys == null) ? "" : sys.notes();
+        if ((custom != null) && !custom.isEmpty())
+            notes.add(custom);
+        return String.join(", ", notes);
     }
 
     /** the per-category result hints for a colony's current allocations, in

@@ -293,6 +293,13 @@ public final class Messages {
         public int allocation;
     }
 
+    /** transfer BC out of the planetary reserve to a specific colony (boosts its
+     * production this turn); amount is capped at the available reserve */
+    public static class TransferReserve {
+        public int systemId;
+        public int amount;
+    }
+
     /**
      * make a diplomatic offer to a contacted empire. In v1 the target's
      * diplomat AI answers immediately (even for human empires); the verdict

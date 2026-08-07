@@ -66,7 +66,7 @@ public class ClientMain {
         ResearchPanel researchPanel = new ResearchPanel(order -> clientHolder[0].sendMessage(order));
         FleetsPanel fleetsPanel = new FleetsPanel(order -> clientHolder[0].sendMessage(order));
         ShipDesignPanel shipDesignPanel = new ShipDesignPanel(order -> clientHolder[0].sendMessage(order));
-        EmpirePanel empirePanel = new EmpirePanel();
+        EmpirePanel empirePanel = new EmpirePanel(order -> clientHolder[0].sendMessage(order));
         RacesPanel racesPanel = new RacesPanel(order -> clientHolder[0].sendMessage(order));
         JLabel status = new JLabel("Connecting to "+host+":"+port+"...");
         JButton nextTurn = new JButton("Next Turn ▶");

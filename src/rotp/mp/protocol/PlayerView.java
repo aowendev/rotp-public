@@ -37,6 +37,11 @@ public final class PlayerView {
     public String raceName;
     public int colorId;
     public int internalSecurity;   // empire-wide security ticks (0-10)
+    // empire economy (this player's own totals)
+    public float reserve;          // planetary reserve (BC banked)
+    public float totalIncome;      // gross income this turn (planetary + trade)
+    public float netIncome;        // income minus ship/stargate/missile-base maintenance
+    public float maintenanceCost;  // total upkeep (ship + stargate + missile bases)
 
     /** empires this player has contacted (plus itself) */
     public List<EmpireDto> empires = new ArrayList<>();
@@ -103,6 +108,8 @@ public final class PlayerView {
         public float planetSize;      // current planet size (base + terraforming)
         public float waste;           // industrial waste awaiting cleanup
         public int popGrowth;         // expected population added next turn
+        public int shield;            // planetary shield level
+        public String notes;          // status notes (rebellion, quarantine/plague, space monster, ...)
         public float factories;
         public float bases;
         public float production;      // BC produced this turn
