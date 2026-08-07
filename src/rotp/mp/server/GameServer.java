@@ -183,8 +183,6 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "setSpyMission", (Messages.SetSpyMission) msg);
         else if (msg instanceof Messages.SetSecurity)
             handleCommand(conn, "setSecurity", (Messages.SetSecurity) msg);
-        else if (msg instanceof Messages.TransferReserve)
-            handleCommand(conn, "transferReserve", (Messages.TransferReserve) msg);
         else if (msg instanceof Messages.DiploOffer)
             handleCommand(conn, "diploOffer", (Messages.DiploOffer) msg);
         else if (msg instanceof Messages.BreakTreaty)
@@ -646,8 +644,6 @@ public class GameServer extends WebSocketServer {
                 err = applySetSpyMission(emp, (Messages.SetSpyMission) cmd);
             else if (cmd instanceof Messages.SetSecurity)
                 err = applySetSecurity(emp, (Messages.SetSecurity) cmd);
-            else if (cmd instanceof Messages.TransferReserve)
-                err = applyTransferReserve(emp, (Messages.TransferReserve) cmd);
             else if (cmd instanceof Messages.DiploOffer)
                 err = applyDiploOffer(conn, emp, (Messages.DiploOffer) cmd);
             else if (cmd instanceof Messages.BreakTreaty)
@@ -1093,21 +1089,6 @@ public class GameServer extends WebSocketServer {
             case "SABOTAGE":  ev.spies().beginSabotage(); return null;
             default:          return "Mission must be HIDE, ESPIONAGE, or SABOTAGE";
         }
-    }
-
-    private String applyTransferReserve(Empire emp, Messages.TransferReserve cmd) {
-        StarSystem sys = galaxy().system(cmd.systemId);
-        if (sys == null)
-            return "No such system";
-        if ((sys.empire() != emp) || !sys.isColonized())
-            return "Not your colony";
-        if (cmd.amount <= 0)
-            return "Transfer amount must be positive";
-        if (emp.totalReserve() <= 0)
-            return "The reserve is empty";
-        // allocateReserve caps the amount at the available reserve internally
-        emp.allocateReserve(sys.colony(), cmd.amount);
-        return null;
     }
 
     private String applySetSecurity(Empire emp, Messages.SetSecurity cmd) {

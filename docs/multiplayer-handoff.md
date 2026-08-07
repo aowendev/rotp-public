@@ -103,15 +103,17 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   colony screen, backed by `TechCategory.toggleLock`). When a tech is researched the
   client pops an **alert** (from the existing "TECH" notification) offering to open
   the Technology screen to pick the next research. `EmpirePanel` (Planet List ⌘P) is
-  the planets window: a per-colony table (#, system, pop/max, factories, waste,
-  shield, bases, production, building, **notes** — rebellion / quarantine / space
-  monster), the **empire economy** (planetary **reserve**, gross income, upkeep,
-  net), and contacted-empire relations. Its one action is **transferring BC out of
-  the reserve to the selected colony** (`transferReserve` → `Empire.allocateReserve`).
-  (Adding BC *into* the reserve isn't wired: ROTP fills the reserve automatically
-  from excess colony output — e.g. a maxed colony's ecology surplus — and has no
-  MOO-style manual "bank income to reserve"; open question whether to add a
-  "divert a planet's output to reserve" operation.) Map clicks set the fleet-deploy destination. This is the
+    the planets window: a read-only per-colony table (#, system, pop/max, factories,
+  waste, shield, bases, production, building, **notes** — rebellion / quarantine /
+  space monster), the **empire economy** (planetary **reserve** amount, gross
+  income, upkeep, net), and contacted-empire relations. **TODO — reserve fund
+  transfers are deferred** (both spending reserve BC out to a colony and banking a
+  planet's output into the reserve): the amount is shown but there are no transfer
+  controls yet. A `transferReserve` command over `Empire.allocateReserve` was
+  prototyped and pulled; re-add client + server when we take it up. (Note: ROTP
+  auto-fills the reserve from excess colony output and has no MOO-style manual
+  banking, so the "add to reserve" direction needs a design decision first.) Map
+  clicks set the fleet-deploy destination. This is the
   **core-playable screen set**; the full economy→build→expand loop is clickable
   end-to-end (choose research → design → set colony build + ship spending → deploy).
 - **Races/diplomacy panel** (`RacesPanel`, Misc → Races / ⌘R): one card per
