@@ -132,6 +132,35 @@ public class ResearchScreenTest {
     }
 
     @Test
+    @Timeout(180)
+    void researchProgressTowardTheCurrentTechIsReported() throws Exception {
+        server = MpTestSupport.startServer(1);
+        alice = new Client(server.port, "Alice");
+        PlayerView v = alice.awaitView();
+        assertNotNull(v.tech.progress, "view carries per-category research progress");
+        assertEquals(6, v.tech.progress.length, "one progress value per category");
+
+        // fund research heavily and concentrate it so progress accrues on one category
+        PlayerView.SystemDto home = MpTestSupport.ownColony(v);
+        Messages.SetColonyAllocations ca = new Messages.SetColonyAllocations();
+        ca.systemId = home.id;
+        ca.alloc = new int[]{0, 0, 5, 15, 30};      // heavy tech spending
+        assertTrue(alice.order(ca).ok, "heavy research spending set");
+        Messages.SetTechAllocations ta = new Messages.SetTechAllocations();
+        ta.alloc = new int[]{60, 0, 0, 0, 0, 0};    // all into Computers
+        assertTrue(alice.order(ta).ok, "concentrate research");
+
+        boolean sawProgress = false;
+        for (int t = 0; t < 12 && !sawProgress; t++) {
+            alice.ready();
+            for (int i = 0; i < 6; i++)
+                if ((alice.lastView.tech.researchingId[i] != null) && (alice.lastView.tech.progress[i] > 0f))
+                    sawProgress = true;
+        }
+        assertTrue(sawProgress, "research progress toward the current tech is reported as it accrues");
+    }
+
+    @Test
     @Timeout(120)
     void lockingAResearchCategoryProtectsItAndIsReflectedInTheView() throws Exception {
         server = MpTestSupport.startServer(1);

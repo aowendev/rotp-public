@@ -316,6 +316,23 @@ public class ClientMain {
                     aiSpinner.setVisible(false);
                     startBtn.setVisible(false);
                 }
+                else if (msg instanceof Messages.Notifications) {
+                    // pop a visible alert when a technology is researched, and offer
+                    // to open the research screen to choose the next tech to develop
+                    java.util.List<String> techs = new java.util.ArrayList<>();
+                    for (Messages.Notification n : ((Messages.Notifications) msg).items)
+                        if ("TECH".equals(n.category))
+                            techs.add(n.text);
+                    if (!techs.isEmpty()) {
+                        String body = String.join("\n", techs)
+                            + "\n\nOpen the Technology screen to choose your next research?";
+                        int pick = javax.swing.JOptionPane.showConfirmDialog(frame, body,
+                            "New Technology", javax.swing.JOptionPane.YES_NO_OPTION,
+                            javax.swing.JOptionPane.INFORMATION_MESSAGE);
+                        if (pick == javax.swing.JOptionPane.YES_OPTION)
+                            researchWindow.setVisible(true);
+                    }
+                }
                 handleMessage(msg, galaxyPanel, colonyPanel, systemInfoPanel, researchPanel, fleetsPanel, shipDesignPanel, empirePanel, racesPanel, lastView, status, nextTurn);
             }),
             text -> SwingUtilities.invokeLater(() -> status.setText(text)));

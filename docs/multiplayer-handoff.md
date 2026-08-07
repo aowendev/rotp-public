@@ -5,7 +5,7 @@ how to run what exists, and exactly what to do next. The full design rationale i
 in [`multiplayer-design.md`](multiplayer-design.md); this is the operational
 "pick up here" note.
 
-_Last updated: 2026-08-06 — Phase 1.5 backlog addressed; **Phase 2 session-completeness work landed** during a live solo test session: a **Races/diplomacy client panel** (⌘R — the outgoing diplomacy commands finally have a UI), **client reconnection** (a dropped client rejoins its empire by name, so a game survives a client relaunch), and a **lobby galaxy-size picker** and an **"AI ability" (difficulty) picker** (host chooses size + AI strength before Start), and **colony spending upgrades** (per-category result hints — years-to-complete / output-per-year / waste-clean-or-+n-pop / research points — plus **live server-computed projections while dragging** and **per-category locks**). 56 tests green. Remaining: one human sign-off playthrough to final win/loss. See "Do this next"._
+_Last updated: 2026-08-06 — Phase 1.5 backlog addressed; **Phase 2 session-completeness work landed** during a live solo test session: a **Races/diplomacy client panel** (⌘R — the outgoing diplomacy commands finally have a UI), **client reconnection** (a dropped client rejoins its empire by name, so a game survives a client relaunch), and a **lobby galaxy-size picker** and an **"AI ability" (difficulty) picker** (host chooses size + AI strength before Start), and **colony spending upgrades** (per-category result hints — years-to-complete / output-per-year / waste-clean-or-+n-pop / research points — plus **live server-computed projections while dragging** and **per-category locks**). 57 tests green. Remaining: one human sign-off playthrough to final win/loss. See "Do this next"._
 
 ## Where we are
 
@@ -21,7 +21,7 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **56 JUnit integration tests, green.**
+projections and per-category locks**. **57 JUnit integration tests, green.**
 
 **Continuing Phase 2** (LAN & session completeness) — see "Do this next".
 Built on `7a2cdd95` (Phase 2 lobby AI-fill); the Races panel, client reconnection,
@@ -97,9 +97,12 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   `GameServer.lowerMaxedColonyEcoToClean()` — it bypasses the ecology lock around
   the engine's `lowerECOToCleanIfEcoComplete()`; the lock flag is preserved).
   `ResearchPanel` lets the player choose each category's research target
-  (`setResearchChoice`, dropdowns) and **lock a research category** (`setTechLock`,
-  the same per-slider lock as the colony screen, backed by `TechCategory.toggleLock`);
-  `EmpirePanel` (Planet List ⌘P) is a read-only
+  (`setResearchChoice`, dropdowns), shows each category's **completion progress**
+  toward its current tech (`TechDto.progress` = `totalBC/costForTech`, separate from
+  the allocation %), and **locks a research category** (`setTechLock`, same as the
+  colony screen, backed by `TechCategory.toggleLock`). When a tech is researched the
+  client pops an **alert** (from the existing "TECH" notification) offering to open
+  the Technology screen to pick the next research. `EmpirePanel` (Planet List ⌘P) is a read-only
   overview. Map clicks set the fleet-deploy destination. This is the
   **core-playable screen set**; the full economy→build→expand loop is clickable
   end-to-end (choose research → design → set colony build + ship spending → deploy).
@@ -110,7 +113,12 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   pure `Diplomacy` helper (mirrors `GameServer.applyDiploOffer/applyBreakTreaty/
   applyDeclareWar`). This is the client UI for the diplomacy commands, which were
   server-complete and test-covered but previously unreachable from the client; the
-  `diploReply` message (verdicts) is now surfaced instead of dropped.
+  `diploReply` message (verdicts) is now surfaced instead of dropped. Each card also
+  has **spy controls** (a 0-20 spending spinner + HIDE/ESPIONAGE/SABOTAGE mission,
+  wired to `setSpySpending`/`setSpyMission`) and a **Report** button that opens an
+  intelligence dialog (relations, estimated relative strength, technologies
+  identified, spy network, report age — from new `EmpireDto` intel fields
+  `relativePower`/`knownTechCount`/`reportAge`, built server-side from `EmpireView`).
 - **Client reconnection** (`GameServer`): a client that drops mid-game is held by
   name (`departed` map); a returning `hello` re-attaches to the same empire and
   replays `gameStarted` + a fresh view (the client re-requests the design catalog
@@ -127,7 +135,7 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   applied via `selectedGameDifficulty`. Deliberately labelled **"AI ability"** on
   the client, since the level scales the AI's economy (a stronger opponent), not a
   human puzzle-difficulty. See the option-set-mismatch TODO under Phase 2.
-- Verified by `itest/rotp/mp/` (56 tests): order/isolation, design/transport,
+- Verified by `itest/rotp/mp/` (57 tests): order/isolation, design/transport,
   spy/diplomacy (also assert notification delivery incl. TECH), the colony /
   research / fleets / ship-design / empire-overview screens (redistribution, DTO
   load, map click hit-test + fleet-destination, build-option load, research-choice

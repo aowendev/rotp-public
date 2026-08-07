@@ -57,6 +57,8 @@ public class ResearchPanel extends JPanel {
     private final JLabel rpLabel = new JLabel(" ");
     private final JSlider[] sliders = new JSlider[6];
     private final JLabel[] valueLabels = new JLabel[6];
+    /** per-category completion progress toward the current tech (separate from allocation %) */
+    private final JLabel[] progressLabels = new JLabel[6];
     /** per-category lock: a locked category holds its value during redistribution */
     private final javax.swing.JCheckBox[] lockChecks = new javax.swing.JCheckBox[6];
     private boolean[] locked = new boolean[6];
@@ -109,12 +111,17 @@ public class ResearchPanel extends JPanel {
             c.gridx = 3; c.weightx = 0;
             grid.add(lock, c);
 
+            progressLabels[i] = new JLabel(" ");
+            progressLabels[i].setToolTipText("How close this category's current research is to completion");
+
             c.gridy = i * 2 + 1;
             c.gridx = 0; c.weightx = 0;
             grid.add(new JLabel("  research:"), c);
             c.gridx = 1; c.weightx = 1; c.gridwidth = 2;
             grid.add(choice, c);
             c.gridwidth = 1;
+            c.gridx = 3; c.weightx = 0;
+            grid.add(progressLabels[i], c);
         }
         add(grid, BorderLayout.CENTER);
 
@@ -149,6 +156,9 @@ public class ResearchPanel extends JPanel {
             sliders[i].setEnabled(!locked[i]);
             lockChecks[i].setSelected(locked[i]);   // setSelected does not fire the action listener
             loadChoices(i, t);
+            boolean researching = (t.researchingId != null) && (i < t.researchingId.length) && (t.researchingId[i] != null);
+            float pr = (t.progress != null && i < t.progress.length) ? t.progress[i] : 0f;
+            progressLabels[i].setText(!researching ? " " : (pr >= 1f ? "ready" : Math.round(pr * 100) + "% done"));
         }
         adjusting = false;
         dirty = false;

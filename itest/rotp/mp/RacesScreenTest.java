@@ -126,8 +126,16 @@ public class RacesScreenTest {
         v.empires.add(empire(0, "You"));
         EmpireDto other = empire(1, "Bulrathi");
         other.maxTradeLevel = 100;
+        // spy + intel fields drive the spy controls and the report
+        other.spySpending = 6;
+        other.spyMission = "ESPIONAGE";
+        other.spies = 2;
+        other.maxSpies = 4;
+        other.relativePower = 1.2f;
+        other.knownTechCount = 7;
+        other.reportAge = 3;
         v.empires.add(other);
-        panel.updateFromView(v);   // headless: builds cards without a display
+        panel.updateFromView(v);   // headless: builds cards (incl. spy controls) without a display
 
         Messages.DiploReply dr = new Messages.DiploReply();
         dr.empireId = 1;

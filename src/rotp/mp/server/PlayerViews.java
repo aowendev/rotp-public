@@ -70,6 +70,9 @@ public final class PlayerViews {
                     : ev.spies().isEspionage() ? "ESPIONAGE" : "SABOTAGE";
                 ed.spies = ev.spies().numActiveSpies();
                 ed.maxSpies = ev.spies().maxSpies();
+                ed.relativePower = ev.empirePower();
+                ed.knownTechCount = ev.spies().tech().allKnownTechs().size();
+                ed.reportAge = ev.spies().reportAge();
             }
             v.empires.add(ed);
         }
@@ -169,12 +172,14 @@ public final class PlayerViews {
         PlayerView.TechDto t = new PlayerView.TechDto();
         t.alloc = new int[TechTree.NUM_CATEGORIES];
         t.locked = new boolean[TechTree.NUM_CATEGORIES];
+        t.progress = new float[TechTree.NUM_CATEGORIES];
         t.researching = new String[TechTree.NUM_CATEGORIES];
         t.researchingId = new String[TechTree.NUM_CATEGORIES];
         for (int i = 0; i < TechTree.NUM_CATEGORIES; i++) {
             TechCategory cat = tech.category(i);
             t.alloc[i] = cat.allocation();
             t.locked[i] = cat.locked();
+            t.progress[i] = researchProgress(cat);
             t.researchingId[i] = cat.currentTech();
             t.researching[i] = (cat.currentTech() == null) ? null : cat.currentTechName();
             java.util.List<PlayerView.TechChoice> choices = new java.util.ArrayList<>();
@@ -192,6 +197,19 @@ public final class PlayerViews {
         }
         t.totalRP = tech.empire().totalPlanetaryResearch();
         return t;
+    }
+
+    /** how close a category's current research is to completion (0..1; >= 1 means
+     * the cost is met and it can be discovered on an upcoming turn) */
+    private static float researchProgress(TechCategory cat) {
+        String id = cat.currentTech();
+        if (id == null)
+            return 0f;
+        rotp.model.tech.Tech tk = rotp.model.tech.TechLibrary.current().tech(id);
+        if (tk == null)
+            return 0f;
+        float cost = cat.costForTech(tk);
+        return (cost > 0) ? (cat.totalBC() / cost) : 0f;
     }
 
     private static java.util.List<PlayerView.FleetDto> fleetDtos(Galaxy gal, Empire emp) {

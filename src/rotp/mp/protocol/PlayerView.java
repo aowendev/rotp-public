@@ -65,6 +65,10 @@ public final class PlayerView {
         public String spyMission;    // HIDE / ESPIONAGE / SABOTAGE
         public int spies;
         public int maxSpies;
+        // intelligence report (best current estimate; all defaults for your own entry)
+        public float relativePower;  // their estimated strength relative to you (1.0 = parity)
+        public int knownTechCount;   // how many of their technologies your spies have identified
+        public int reportAge;        // turns since your last spy report on them (-1 = never)
     }
 
     public static class SystemDto {
@@ -112,6 +116,7 @@ public final class PlayerView {
     public static class TechDto {
         public int[] alloc;             // ticks 0-60 per category
         public boolean[] locked;        // per category: held during redistribution
+        public float[] progress;        // per category: research toward current tech (0..1, >=1 = ready to discover)
         public String[] researching;    // current tech name per category, null if none
         public String[] researchingId;  // current tech id per category, null if none
         public float totalRP;

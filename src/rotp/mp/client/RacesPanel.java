@@ -16,6 +16,7 @@
 package rotp.mp.client;
 
 import java.awt.BorderLayout;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
 import java.util.List;
@@ -26,6 +27,7 @@ import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
@@ -157,7 +159,64 @@ public class RacesPanel extends JPanel {
         actions.add(actionButton("Declare War", Diplomacy.canDeclareWar(e), () -> declareWar(e.id)));
 
         card.add(actions, BorderLayout.CENTER);
+
+        // spy allocation + mission, and the intelligence report
+        JPanel bottom = new JPanel();
+        bottom.setLayout(new BoxLayout(bottom, BoxLayout.Y_AXIS));
+
+        JPanel spyRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        spyRow.add(new JLabel("Spies " + e.spies + "/" + e.maxSpies + "  spend:"));
+        int curSpend = Math.max(0, Math.min(20, e.spySpending));
+        JSpinner spySpend = new JSpinner(new SpinnerNumberModel(curSpend, 0, 20, 1));
+        spySpend.setToolTipText("Spy spending against this empire (0-20 ticks, each 0.5% of income)");
+        spySpend.addChangeListener(a -> setSpySpending(e.id, (Integer) spySpend.getValue()));
+        spyRow.add(spySpend);
+        JComboBox<String> mission = new JComboBox<>(new String[]{"HIDE", "ESPIONAGE", "SABOTAGE"});
+        mission.setSelectedItem((e.spyMission == null) ? "HIDE" : e.spyMission);
+        mission.addActionListener(a -> setSpyMission(e.id, (String) mission.getSelectedItem()));
+        spyRow.add(mission);
+        bottom.add(spyRow);
+
+        JPanel reportRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        JButton report = new JButton("Report");
+        report.setToolTipText("Intelligence report on this race");
+        report.addActionListener(a -> showReport(e));
+        reportRow.add(report);
+        bottom.add(reportRow);
+
+        card.add(bottom, BorderLayout.SOUTH);
         return card;
+    }
+
+    private void setSpySpending(int empireId, int allocation) {
+        Messages.SetSpySpending m = new Messages.SetSpySpending();
+        m.empireId = empireId;
+        m.allocation = allocation;
+        orderSender.accept(m);
+    }
+
+    private void setSpyMission(int empireId, String missionName) {
+        Messages.SetSpyMission m = new Messages.SetSpyMission();
+        m.empireId = empireId;
+        m.mission = missionName;
+        orderSender.accept(m);
+    }
+
+    /** show the intelligence report on a race (what our spies have learned) */
+    private void showReport(EmpireDto e) {
+        String power = (e.relativePower <= 0f) ? "unknown"
+            : String.format("%.0f%% of your strength", e.relativePower * 100);
+        String age = (e.reportAge < 0) ? "never"
+            : (e.reportAge == 0 ? "this turn" : e.reportAge + " turn(s) ago");
+        String body = Diplomacy.displayName(e) + "\n\n"
+            + "Relations: " + Diplomacy.statusLabel(e) + "\n"
+            + "Estimated strength: " + power + "\n"
+            + "Technologies identified: " + e.knownTechCount + "\n"
+            + "Spy network: " + e.spies + "/" + e.maxSpies + " spies, "
+            + ((e.spyMission == null) ? "HIDE" : e.spyMission) + " mission\n"
+            + "Last spy report: " + age;
+        JOptionPane.showMessageDialog(this, body,
+            "Race Report - " + Diplomacy.displayName(e), JOptionPane.INFORMATION_MESSAGE);
     }
 
     private JButton actionButton(String label, boolean enabled, Runnable action) {
