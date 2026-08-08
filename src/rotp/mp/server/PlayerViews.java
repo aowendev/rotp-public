@@ -61,6 +61,10 @@ public final class PlayerViews {
             ed.name = e.name();
             ed.race = e.raceName();
             ed.colorId = e.colorId();
+            if (e.leader() != null) {
+                ed.personality = e.leader().personality();
+                ed.objective = e.leader().objective();
+            }
             EmpireView ev = (e == emp) ? null : emp.viewForEmpire(e);
             if (ev != null) {
                 ed.atWar = ev.embassy().anyWar();

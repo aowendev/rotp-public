@@ -59,6 +59,8 @@ public final class PlayerView {
         public String name;
         public String race;
         public int colorId;
+        public String personality;   // leader disposition, e.g. "Xenophobic"
+        public String objective;     // leader agenda, e.g. "Expansionist"
         // diplomatic/spy status vs this empire (all defaults for your own entry)
         public boolean atWar;
         public boolean pact;

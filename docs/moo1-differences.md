@@ -136,6 +136,20 @@ when it's confirmed against the Mac port, mark it — that's the gold standard h
 - **Divergence:** unknown until compared; recorded here so the numbers are ready to
   diff.
 
+### 8a. Leader personality & objective — **confirmed faithful (no divergence)**
+- **MOO1:** each race's leader has a personality (Erratic / Pacifist / Honorable /
+  Ruthless / Aggressive / Xenophobic) and an objective (Militarist / Ecologist /
+  Diplomat / Industrialist / Expansionist / Technologist) — e.g. "Xenophobic
+  Expansionist", shown on the races screen after contact.
+- **ROTP:** the **same 6×6 set** — `Leader.Personality` / `Leader.Objective`
+  (`Leader.java`), surfaced as `leader().personality()` / `leader().objective()` and
+  formatted via `LEADER_PERSONALITY_FORMAT` (`Empire.java:1129`). Assigned per race
+  (`race().randomLeaderAttitude()/randomLeaderObjective()`) or fully random with the
+  `randomizeAIPersonality` option.
+- **Divergence:** none in the taxonomy — a faithful match. (What each disposition
+  *does* to the AI is ROTP's own AI code — see 8 below.) Now surfaced in the
+  multiplayer Races panel (`EmpireDto.personality`/`objective`).
+
 ### 8. AI is entirely original — **confirmed (structural, not a formula)**
 - **MOO1:** its own (undocumented) AI.
 - **ROTP:** a from-scratch AI — `rotp.model.ai.base`, `…modnar`, `…xilmi`

@@ -118,7 +118,19 @@ public class RacesPanel extends JPanel {
     private JPanel buildCard(EmpireDto e) {
         JPanel card = new JPanel(new BorderLayout(6, 4));
         card.setBorder(BorderFactory.createTitledBorder(Diplomacy.displayName(e)));
-        card.add(new JLabel(Diplomacy.statusLabel(e)), BorderLayout.NORTH);
+        JPanel north = new JPanel();
+        north.setLayout(new BoxLayout(north, BoxLayout.Y_AXIS));
+        String disp = disposition(e);
+        if (!disp.isEmpty()) {
+            JLabel dl = new JLabel(disp);
+            dl.setFont(dl.getFont().deriveFont(Font.ITALIC));
+            dl.setAlignmentX(LEFT_ALIGNMENT);
+            north.add(dl);
+        }
+        JLabel statusLabel = new JLabel(Diplomacy.statusLabel(e));
+        statusLabel.setAlignmentX(LEFT_ALIGNMENT);
+        north.add(statusLabel);
+        card.add(north, BorderLayout.NORTH);
 
         JPanel actions = new JPanel(new GridLayout(0, 2, 6, 4));
 
@@ -188,6 +200,13 @@ public class RacesPanel extends JPanel {
         return card;
     }
 
+    /** the race's leader disposition, e.g. "Xenophobic Expansionist" (blank if unknown) */
+    private static String disposition(EmpireDto e) {
+        String p = (e.personality == null) ? "" : e.personality;
+        String o = (e.objective == null) ? "" : e.objective;
+        return (p + " " + o).trim();
+    }
+
     private void setSpySpending(int empireId, int allocation) {
         Messages.SetSpySpending m = new Messages.SetSpySpending();
         m.empireId = empireId;
@@ -208,7 +227,9 @@ public class RacesPanel extends JPanel {
             : String.format("%.0f%% of your strength", e.relativePower * 100);
         String age = (e.reportAge < 0) ? "never"
             : (e.reportAge == 0 ? "this turn" : e.reportAge + " turn(s) ago");
+        String disp = disposition(e);
         String body = Diplomacy.displayName(e) + "\n\n"
+            + (disp.isEmpty() ? "" : "Disposition: " + disp + "\n")
             + "Relations: " + Diplomacy.statusLabel(e) + "\n"
             + "Estimated strength: " + power + "\n"
             + "Technologies identified: " + e.knownTechCount + "\n"

@@ -24,7 +24,10 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
+import rotp.mp.MpTestSupport.Client;
+import rotp.mp.MpTestSupport.Server;
 import rotp.mp.client.Diplomacy;
 import rotp.mp.client.RacesPanel;
 import rotp.mp.protocol.Messages;
@@ -126,6 +129,8 @@ public class RacesScreenTest {
         v.empires.add(empire(0, "You"));
         EmpireDto other = empire(1, "Bulrathi");
         other.maxTradeLevel = 100;
+        other.personality = "Xenophobic";
+        other.objective = "Expansionist";
         // spy + intel fields drive the spy controls and the report
         other.spySpending = 6;
         other.spyMission = "ESPIONAGE";
@@ -144,6 +149,27 @@ public class RacesScreenTest {
         dr.text = "We accept your proposal.";
         panel.showReply(dr);       // must not throw resolving the empire name
         assertNotNull(panel);
+    }
+
+    @Test
+    @Timeout(120)
+    void serverReportsLeaderDisposition() throws Exception {
+        Server server = MpTestSupport.startServer(1);
+        Client alice = new Client(server.port, "Alice");
+        try {
+            PlayerView v = alice.awaitView();
+            EmpireDto self = null;
+            for (EmpireDto e : v.empires)
+                if (e.id == v.empireId)
+                    self = e;
+            assertNotNull(self, "the view lists the player's own empire");
+            assertNotNull(self.personality, "leader personality (disposition) is reported");
+            assertNotNull(self.objective, "leader objective is reported");
+        }
+        finally {
+            alice.close();
+            server.stop();
+        }
     }
 
     static { System.setProperty("java.awt.headless", "true"); }
