@@ -86,6 +86,19 @@ public class GameServer extends WebSocketServer {
     private volatile boolean turnRunning = false;
     private volatile boolean gameEnded = false;   // a win/loss was reached and signalled
 
+    /** optional turn timer: when > 0, the server auto-resolves the turn this many seconds
+     * after orders open, so an absent/slow human can't stall a we-go game. 0 = disabled. */
+    private volatile int turnSeconds = 0;
+    /** wall-clock ms at which the current turn auto-resolves, or 0 if no timer is armed */
+    private volatile long turnDeadlineMs = 0;
+    private final java.util.concurrent.ScheduledExecutorService timer =
+        java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "rotp-mp-turn-timer");
+            t.setDaemon(true);
+            return t;
+        });
+    private java.util.concurrent.ScheduledFuture<?> deadlineTask;
+
     private static class Player {
         String name;
         int empireId = -1;
@@ -133,6 +146,12 @@ public class GameServer extends WebSocketServer {
                 unclaimedLoadSlots.add(e.id);
         System.out.println("[server] loaded turn " + galaxy().currentTurn()
             + " with " + unclaimedLoadSlots.size() + " human slot(s): " + unclaimedLoadSlots);
+    }
+
+    @Override
+    public void stop(int timeout) throws InterruptedException {
+        timer.shutdownNow();   // release the turn-timer thread on shutdown
+        super.stop(timeout);
     }
 
     @Override
@@ -584,6 +603,7 @@ public class GameServer extends WebSocketServer {
             }
         }
         broadcastViews();
+        armTurnTimer();   // start the first turn's deadline, if a timer is set
         broadcastTurnStatus("Awaiting orders");
     }
 
@@ -644,8 +664,66 @@ public class GameServer extends WebSocketServer {
                     return;
             turnRunning = true;
         }
+        cancelTurnTimer();   // all ready: resolving now, no deadline needed
         Thread t = new Thread(this::runTurn, "rotp-mp-turn");
         t.start();
+    }
+
+    /**
+     * Set the turn timer (seconds); 0 disables it. When enabled, a turn auto-resolves this
+     * long after orders open even if some humans have not readied — their current orders
+     * (and the server's AI defaults for anything they didn't set) stand. Arms immediately
+     * if orders are open right now.
+     */
+    public void setTurnTimer(int seconds) {
+        turnSeconds = Math.max(0, seconds);
+        if (turnSeconds == 0)
+            cancelTurnTimer();
+        else if (gameStarted && !turnRunning && !gameEnded)
+            armTurnTimer();
+        if (gameStarted && !turnRunning)
+            broadcastTurnStatus(turnSeconds > 0 ? "Turn timer set to " + turnSeconds + "s" : "Turn timer off");
+    }
+
+    /** open the ordering window's deadline (no-op if the timer is disabled) */
+    private synchronized void armTurnTimer() {
+        cancelTurnTimer();
+        int secs = turnSeconds;
+        if (secs <= 0 || !gameStarted || gameEnded)
+            return;
+        turnDeadlineMs = System.currentTimeMillis() + (secs * 1000L);
+        deadlineTask = timer.schedule(this::onTurnTimeout, secs, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
+    private synchronized void cancelTurnTimer() {
+        turnDeadlineMs = 0;
+        if (deadlineTask != null) {
+            deadlineTask.cancel(false);
+            deadlineTask = null;
+        }
+    }
+
+    /** the timer fired: force the turn to resolve with whatever orders are in */
+    private void onTurnTimeout() {
+        synchronized (this) {
+            if (!gameStarted || turnRunning || gameEnded)
+                return;
+            turnDeadlineMs = 0;
+            for (Player p : players.values())
+                p.ready = true;   // auto-ready everyone still deliberating
+        }
+        System.out.println("[server] turn timer expired; auto-resolving");
+        broadcastTurnStatus("Turn timer expired - resolving");
+        maybeRunTurn();
+    }
+
+    /** seconds left before the turn auto-resolves, or -1 if no timer is armed */
+    private int secondsRemaining() {
+        long deadline = turnDeadlineMs;
+        if (deadline == 0)
+            return -1;
+        long remainingMs = deadline - System.currentTimeMillis();
+        return (int) Math.max(0, (remainingMs + 999) / 1000);
     }
 
     private void runTurn() {
@@ -680,6 +758,10 @@ public class GameServer extends WebSocketServer {
         // and the client re-enables the Next Turn button only when processing is
         // false. Broadcasting it while turnRunning was still true left the button
         // stuck disabled on every turn after the first.
+        if (gameEnded)
+            cancelTurnTimer();
+        else
+            armTurnTimer();   // open the next turn's deadline
         broadcastTurnStatus(gameEnded ? "Game over" : "Awaiting orders");
     }
 
@@ -1626,6 +1708,7 @@ public class GameServer extends WebSocketServer {
                     ts.readyCount++;
         }
         ts.note = note;
+        ts.secondsRemaining = secondsRemaining();
         broadcastAll(Protocol.encode(ts));
     }
 

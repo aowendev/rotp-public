@@ -25,7 +25,10 @@ delivered as an INCOMING_DIPLOMACY prompt the human accepts/declines (`respondDi
 prompt resolved with `castCouncilVote`. (4) **Colonize choice** — a remote human's colony
 ship no longer auto-settles; arriving at a colonizable system raises a COLONIZE prompt
 resolved with the existing `colonize` command (or ignored to leave the ship in orbit).
-All ride a reusable `Prompts` message. **67 tests green.** See "Then — Phase 3"._
+(5) **Turn timers** — an optional per-turn deadline (server `timer=<secs>` arg or
+`setTurnTimer`, off by default) auto-resolves a we-go turn so an absent human can't stall
+it; `TurnStatus.secondsRemaining` drives a client countdown. Prompts (1-4) ride a reusable
+`Prompts` message. **70 tests green.** See "Then — Phase 3"._
 
 ## Where we are
 
@@ -44,11 +47,11 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **67 JUnit integration tests, green.**
+projections and per-category locks**. **70 JUnit integration tests, green.**
 
-**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is underway** — increments 1-4
-(interactive tech selection; incoming diplomacy; council vote; colonize choice) are in
-(see "Then — Phase 3"). Built on `7a2cdd95` (Phase 2
+**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is underway** — increments 1-5
+(interactive tech selection; incoming diplomacy; council vote; colonize choice; turn
+timers) are in (see "Then — Phase 3"). Built on `7a2cdd95` (Phase 2
 lobby AI-fill); the Races panel, client reconnection, lobby galaxy-size / AI-ability
 pickers, the colony/research/empire upgrades, and minimal save/load are committed on
 top of it across this session.
@@ -453,9 +456,29 @@ is in range. NOTE: `ShipDesignTransportTest.tryColonize` now reaches the explici
 path (no auto-settle), so a `ready()` was added there before its COLONY_GAINED check
 (colony gained via command surfaces the per-turn notification one turn later).
 
-**Increment backlog (each: server prompt + client dialog + a `*Test`):**
-- **Turn timers** — optional per-turn deadline so an absent human doesn't stall a we-go
-  turn (default keeps the server's picks).
+**Increment 5 — turn timers (DONE, 2026-08-08).** An optional per-turn deadline so an
+absent/slow human can't stall a we-go turn. `GameServer.setTurnTimer(seconds)` (0 = off,
+the default; wired to a `timer=<secs>` server arg in `ServerMain`) arms a single-thread
+`ScheduledExecutorService` when orders open (game start and end of `runTurn`), cancels it
+when a turn starts resolving (`maybeRunTurn`) or the game ends, and on expiry
+(`onTurnTimeout`) auto-readies every player and calls `maybeRunTurn` — so a timed-out
+turn resolves with whatever orders are in plus the server's AI defaults (identical to how
+an ignored prompt already falls back). `TurnStatus` gained `secondsRemaining` (-1 = no
+timer) for a client countdown; `ClientMain` shows "Xs left". The timer thread is a daemon
+and `stop(int)` shuts the executor down. Tests: `TurnTimerTest` (expiry auto-resolves
+without readying; readying still resolves immediately under a long timer; a 0 timer never
+auto-resolves). NOTE: the timer is a *server/session* setting, not yet a lobby pick — a
+host-facing lobby control (like galaxy size / AI ability) is the natural follow-up.
+
+**Increment backlog (each: server prompt/notification + client handling + a `*Test`):**
+- **GNN / combat / spy events into the notification path** — the biggest remaining piece;
+  see the GNN note just below. Broadcast public galactic news to all clients and route
+  the naturally-private events to the affected empire.
+- **Turn timer as a lobby pick** — expose `setTurnTimer` as a host lobby control (like
+  galaxy size / AI ability) instead of only a server arg.
+- **Async player-to-player diplomacy** — today a human→human offer already defers to the
+  other human's prompt (increment 2); a fuller negotiation UX (counter-offers, tech
+  trades) is future work.
 
 **GNN alerts are NOT scoped today** (asked 2026-08-08). In the base engine GNN news is
 posted to the single global `GameSession` turn-notification queue and rendered from the

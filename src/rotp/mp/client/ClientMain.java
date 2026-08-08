@@ -382,7 +382,8 @@ public class ClientMain {
         }
         else if (msg instanceof Messages.TurnStatus) {
             Messages.TurnStatus ts = (Messages.TurnStatus) msg;
-            status.setText(ts.note+" (turn "+ts.turn+", ready "+ts.readyCount+"/"+ts.totalPlayers+")");
+            String timer = (ts.secondsRemaining >= 0) ? ", "+ts.secondsRemaining+"s left" : "";
+            status.setText(ts.note+" (turn "+ts.turn+", ready "+ts.readyCount+"/"+ts.totalPlayers+timer+")");
             if (ts.processing)
                 nextTurn.setEnabled(false);
         }

@@ -34,6 +34,7 @@ public class ServerMain {
         int players = intArg(args, "players", 2);
         String size = galaxySize(stringArg(args, "size", null));
         String load = stringArg(args, "load", null);   // resume a saved game instead of a new one
+        int turnTimer = intArg(args, "timer", 0);       // seconds per turn before auto-resolve; 0 = off
 
         // must be registered before anything touches the game session,
         // otherwise the default SessionUI would load the Swing UI
@@ -46,6 +47,7 @@ public class ServerMain {
         LanguageManager.current().selectedLanguageName();
 
         GameServer server = new GameServer(port, players, size, load);
+        server.setTurnTimer(turnTimer);
         server.run();  // blocks
     }
 

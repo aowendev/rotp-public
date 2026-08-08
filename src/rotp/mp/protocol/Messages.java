@@ -144,6 +144,9 @@ public final class Messages {
         public int readyCount;
         public int totalPlayers;
         public String note;
+        /** seconds left on the turn timer before the server auto-resolves; -1 = no timer.
+         * The client may tick this down locally between status messages. */
+        public int secondsRemaining = -1;
     }
 
     // ---- orders (client -> server), all validated against the sender's empire ----
