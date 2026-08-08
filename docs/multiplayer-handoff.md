@@ -12,13 +12,18 @@ session-completeness batch landed live: Races/diplomacy panel (⌘R) with spy co
 pickers; colony live projections + per-category locks + eco-at-max + richer readout +
 max-bases; research progress % + tech-completion alert + research locks; a richer
 Empire Overview (planets window); one-decimal ship-range display; and **minimal
-local save/load** (Save Game ⌘S; resume with `load=<name>`). **61 tests green.** Next:
-Phase 2 remaining (lobby color picks) and Phase 3 (interactive prompts). See "Then — Phase 2"._
+local save/load** (Save Game ⌘S; resume with `load=<name>`). **61 tests green. Phase 2
+is now complete** — its two open items (player-color selection and the galaxy-size
+option set) are deferred to the web client, not built in the Java reference client.
+Next: **Phase 3** (interactive mid-turn prompts). See "Then — Phase 2"._
 
 ## Where we are
 
-Branch **`multiplayer`** (off `master`). **Phases 0 and 1 are complete and
-committed; Phase 2 is underway** (lobby AI-fill / solo-vs-AI done). A game is
+Branch **`multiplayer`** (off `master`). **Phases 0, 1, and 1.5 are complete, and
+Phase 2 (LAN & session completeness) is complete** — lobby AI-fill / solo-vs-AI,
+reconnection, minimal save/load, and race / galaxy-size / AI-ability picks are all
+in; the remaining color-selection and galaxy-size-option-set items are deferred to
+the web client (Phase 5). **Phase 3 (interactive mid-turn prompts) is next.** A game is
 genuinely playable end-to-end over the wire: a headless server runs the real
 game; the DTO client renders every core screen (galaxy map, colony, research,
 fleets & transports, ship design, empire overview) from `PlayerView` and drives
@@ -31,10 +36,10 @@ and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
 projections and per-category locks**. **61 JUnit integration tests, green.**
 
-**Continuing Phase 2** (LAN & session completeness) — see "Do this next".
-Built on `7a2cdd95` (Phase 2 lobby AI-fill); the Races panel, client reconnection,
-the galaxy-size and AI-ability (difficulty) lobby pickers, and the colony
-result-hints are committed on top of it in one batch.
+**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 (interactive prompts) is
+next.** Built on `7a2cdd95` (Phase 2 lobby AI-fill); the Races panel, client
+reconnection, lobby galaxy-size / AI-ability pickers, the colony/research/empire
+upgrades, and minimal save/load are committed on top of it across this session.
 
 ## Run it
 
@@ -314,6 +319,10 @@ before this). See `GameServer.difficultyOptions()` and `DifficultyTest`.
 > Settle this when building the browser lobby against `mac-ux-spec.md`; the server
 > already validates against ROTP's `galaxySizeOptions()` / `gameDifficultyOptions()`,
 > so narrowing is a client/lobby concern, not an engine change.
+>
+> **Decision (2026-08-08): defer to the web client.** The web lobby will present a
+> limited, MOO-faithful subset of sizes/difficulties client-side; the engine and
+> server keep their full lists unchanged. Not a reference-client task.
 
 **DONE — minimal save/load** (local, testing-focused). The host saves the running
 game with the **Save Game** menu item (⌘S → name) → `saveGame` command →
@@ -326,10 +335,21 @@ existing `reconnect(...)` path (by-order for now; name matching is a later nicet
 load (no server restart), and — eventually — importing **original MOO1 save files**
 (a format-translation task, separate from this ROTP-native serialization).
 
-Remaining Phase 2:
+**Phase 2 is COMPLETE (2026-08-08).** The two open items are deliberately **pushed
+to the web client (Phase 5), not built in the Java reference client:**
 
-1. **Lobby polish**: color picks before start (race + galaxy size now done; symmetric
-   color picker still needs the opponent-color plumbing noted under Phase 1.5 #1).
+1. **Player color selection → web client.** Colors matter only to the *local*
+   human's view, so they need no server-side state. Each client can choose/assign
+   display colors locally; the server keeps sending the factory `colorId` as a
+   default the client may override. No protocol or server work — the web lobby owns it.
+2. **Galaxy-size option set → web client** (the mismatch TODO above). The web lobby
+   will present a limited, MOO-faithful subset (Small/Medium/Large/Huge) client-side,
+   without changing ROTP's engine. The server already validates against the full
+   `galaxySizeOptions()`, so this is purely which options the client chooses to offer.
+
+Next up: **Phase 3** (interactive mid-turn prompts with turn timers — incoming
+diplomacy, tech/council selection; async player-to-player diplomacy) and eventually
+Phase 4 (internet hosting) / Phase 5 (browser client). See design doc §7.
 
 Deferred Phase-1 polish (pick up any time): per-design partial fleet deploys
 (`deployFleet.counts[]` — surface per-design count spinners on a selected fleet);
