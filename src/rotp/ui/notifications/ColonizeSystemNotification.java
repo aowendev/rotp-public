@@ -34,6 +34,9 @@ public class ColonizeSystemNotification implements TurnNotification, Base {
         fleet = fl;
         design = d;
     }
+    public int systemId()            { return sysId; }
+    public ShipFleet fleet()         { return fleet; }
+    public ShipDesign design()       { return design; }
     @Override
     public String displayOrder() { return PROMPT_COLONIZE; }
     @Override

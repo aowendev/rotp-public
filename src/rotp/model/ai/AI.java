@@ -208,8 +208,10 @@ public class AI implements Base {
             return;
 
         // AT THIS POINT, the fleet can definitely colonize the planet
-        // confirm if player controlled & if colonize prompt is disabled
-        if (empire.isAIControlled() || UserPreferences.autoColonize())
+        // confirm if player controlled & if colonize prompt is disabled. decidedByAI()
+        // (not isAIControlled()) so a remote human is prompted rather than auto-settled,
+        // exactly like the local player; a no-op for single-player.
+        if (empire.decidedByAI() || UserPreferences.autoColonize())
             fl.colonizeSystem(sys, bestDesign);
         else
             ColonizeSystemNotification.create(sys.id, fl, bestDesign);

@@ -159,9 +159,13 @@ public class ShipDesignTransportTest {
         toEmpty.size = 3;
         assertFalse(alice.order(toEmpty).ok, "transport to uncolonized system rejected");
 
-        // expand: deploy the colony ship; under v1 AI-assist it auto-colonizes on arrival
+        // expand: deploy the colony ship. A remote human is now prompted to settle
+        // (Phase 3 colonize choice) and tryColonize answers via the colonize command, so
+        // the colony is gained between turns; advance one turn to surface the per-turn
+        // COLONY_GAINED notification.
         int newColony = tryColonize(home, colonySlot);
         assumeTrue(newColony >= 0, "no colonizable system reachable this game; skipping transport delivery");
+        alice.ready();
         assertTrue(MpTestSupport.sawNotification(alice, "COLONY_GAINED"),
             "gaining a colony delivered as a COLONY_GAINED notification");
 

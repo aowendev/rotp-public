@@ -371,6 +371,9 @@ public final class Messages {
      *                        turn to vote; choiceIds/choiceNames list the candidates
      *                        (empire ids as strings) plus "-1" = abstain
      *                        (resolve with castCouncilVote)
+     *   COLONIZE           - a colony ship of yours is orbiting a colonizable, uncolonized
+     *                        system (systemId); settle it or leave it (resolve with
+     *                        colonize, or ignore to leave the ship in orbit)
      */
     public static class Prompts {
         public int turn;
@@ -389,6 +392,8 @@ public final class Messages {
         // INCOMING_DIPLOMACY: who is offering, and what.
         public int empireId = -1;         // the empire making the offer
         public String action;             // TRADE | PEACE | PACT | ALLIANCE
+        // COLONIZE: the system a colony ship is orbiting and may settle.
+        public int systemId = -1;
     }
 
     /**

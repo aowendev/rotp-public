@@ -43,6 +43,7 @@ import rotp.mp.protocol.Protocol;
 import rotp.model.game.SessionUI;
 import rotp.ui.diplomacy.DialogueManager;
 import rotp.ui.diplomacy.DiplomaticReply;
+import rotp.ui.notifications.ColonizeSystemNotification;
 import rotp.ui.notifications.DiplomaticNotification;
 import rotp.ui.notifications.TurnNotification;
 
@@ -666,7 +667,7 @@ public class GameServer extends WebSocketServer {
                     p.ready = false;
             }
             lowerMaxedColonyEcoToClean();
-            collectIncomingDiplomacy();   // clears pendingPrompts, then adds diplomacy offers
+            collectPostTurnPrompts();     // clears pendingPrompts, adds diplomacy offers + colonize choices
             driveCouncil();               // adds any council-vote prompt for a human voter
             broadcastNotifications();
             broadcastViews();
@@ -1460,35 +1461,62 @@ public class GameServer extends WebSocketServer {
 
     /**
      * Drain the engine's per-turn notification queue (collected headlessly by
-     * {@link ServerUI}) and convert deferred diplomatic offers aimed at a remote human
-     * into INCOMING_DIPLOMACY prompts. The offers were deferred (not auto-resolved)
-     * because the receive-offer AI gates now fire for remote humans too (see
-     * {@code decidedByAI()} in AIDiplomat). Other turn notifications are ignored here;
-     * per-empire event notifications come from {@link NotificationCenter}.
+     * {@link ServerUI}) and turn the entries aimed at a remote human into interactive
+     * prompts: deferred diplomatic offers (INCOMING_DIPLOMACY) and colony-ship arrivals
+     * at colonizable systems (COLONIZE). Both are deferred rather than auto-resolved
+     * because the relevant AI gates now fire for remote humans (see {@code decidedByAI()}).
+     * Other turn notifications are ignored; per-empire event notifications come from
+     * {@link NotificationCenter}.
      */
-    private void collectIncomingDiplomacy() {
+    private void collectPostTurnPrompts() {
         pendingPrompts.clear();
         SessionUI ui = SessionUI.get();
         if (!(ui instanceof ServerUI))
             return;
         for (TurnNotification tn : ((ServerUI) ui).drainNotifications()) {
-            if (!(tn instanceof DiplomaticNotification))
-                continue;
-            DiplomaticNotification dn = (DiplomaticNotification) tn;
-            String action = diploActionFor(dn.type());
-            if ((action == null) || (dn.view() == null))
-                continue;
-            Empire target = dn.view().empire();   // requestor.viewForEmpire(target) -> empire() is the offered-to empire
-            Empire requestor = dn.talker();
-            if ((target == null) || (requestor == null))
-                continue;
-            Messages.Prompt p = new Messages.Prompt();
-            p.type = "INCOMING_DIPLOMACY";
-            p.action = action;
-            p.empireId = requestor.id;
-            p.text = requestor.name() + " proposes " + diploLabel(action);
-            pendingPrompts.computeIfAbsent(target.id, k -> new ArrayList<>()).add(p);
+            if (tn instanceof DiplomaticNotification)
+                collectDiplomacyPrompt((DiplomaticNotification) tn);
+            else if (tn instanceof ColonizeSystemNotification)
+                collectColonizePrompt((ColonizeSystemNotification) tn);
         }
+    }
+
+    private void collectDiplomacyPrompt(DiplomaticNotification dn) {
+        String action = diploActionFor(dn.type());
+        if ((action == null) || (dn.view() == null))
+            return;
+        Empire target = dn.view().empire();   // requestor.viewForEmpire(target) -> empire() is the offered-to empire
+        Empire requestor = dn.talker();
+        if ((target == null) || (requestor == null))
+            return;
+        Messages.Prompt p = new Messages.Prompt();
+        p.type = "INCOMING_DIPLOMACY";
+        p.action = action;
+        p.empireId = requestor.id;
+        p.text = requestor.name() + " proposes " + diploLabel(action);
+        pendingPrompts.computeIfAbsent(target.id, k -> new ArrayList<>()).add(p);
+    }
+
+    private void collectColonizePrompt(ColonizeSystemNotification cn) {
+        int sysId = cn.systemId();
+        StarSystem sys = galaxy().system(sysId);
+        if ((sys == null) || sys.isColonized())    // last-minute check: still settle-able?
+            return;
+        if ((cn.fleet() == null) || !cn.fleet().isActive())
+            return;
+        Empire owner = galaxy().empire(cn.fleet().empId());
+        if (owner == null)
+            return;
+        Messages.Prompt p = new Messages.Prompt();
+        p.type = "COLONIZE";
+        p.systemId = sysId;
+        p.text = "Colonize " + colonizeTargetName(owner, sysId) + "?";
+        pendingPrompts.computeIfAbsent(owner.id, k -> new ArrayList<>()).add(p);
+    }
+
+    private static String colonizeTargetName(Empire owner, int sysId) {
+        String n = owner.sv.name(sysId);
+        return ((n == null) || n.isEmpty()) ? ("system " + sysId) : n;
     }
 
     /**

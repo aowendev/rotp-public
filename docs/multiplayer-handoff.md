@@ -15,15 +15,17 @@ Empire Overview (planets window); one-decimal ship-range display; and **minimal
 local save/load** (Save Game ⌘S; resume with `load=<name>`). **Phase 2
 is complete** — its two open items (player-color selection and the galaxy-size
 option set) are deferred to the web client, not built in the Java reference client.
-**Phase 3 is now underway: increments 1-3 are in.** (1) Interactive **tech selection** —
+**Phase 3 is now underway: increments 1-4 are in.** (1) Interactive **tech selection** —
 when a research category completes a tech, the server raises a self-contained SELECT_TECH
 prompt and the client pops a chooser. (2) **Incoming diplomacy** — when another empire
 offers a treaty/trade to a remote human, the offer is deferred (not auto-resolved) and
 delivered as an INCOMING_DIPLOMACY prompt the human accepts/declines (`respondDiplomacy`).
 (3) **Council vote** — the Galactic Council now works headlessly (it previously would
 *hang* the server) and, when it is a remote human's turn to vote, raises a COUNCIL_VOTE
-prompt resolved with `castCouncilVote`. All ride a reusable `Prompts` message. **66 tests
-green.** See "Then — Phase 3"._
+prompt resolved with `castCouncilVote`. (4) **Colonize choice** — a remote human's colony
+ship no longer auto-settles; arriving at a colonizable system raises a COLONIZE prompt
+resolved with the existing `colonize` command (or ignored to leave the ship in orbit).
+All ride a reusable `Prompts` message. **67 tests green.** See "Then — Phase 3"._
 
 ## Where we are
 
@@ -42,10 +44,11 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **66 JUnit integration tests, green.**
+projections and per-category locks**. **67 JUnit integration tests, green.**
 
-**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is underway** — increments 1-3
-(interactive tech selection; incoming diplomacy; council vote) are in (see "Then — Phase 3"). Built on `7a2cdd95` (Phase 2
+**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is underway** — increments 1-4
+(interactive tech selection; incoming diplomacy; council vote; colonize choice) are in
+(see "Then — Phase 3"). Built on `7a2cdd95` (Phase 2
 lobby AI-fill); the Races panel, client reconnection, lobby galaxy-size / AI-ability
 pickers, the colony/research/empire upgrades, and minimal save/load are committed on
 top of it across this session.
@@ -432,8 +435,25 @@ forced via reflection since 2/3-colonized is impractical to reach in a bounded t
 KNOWN GAP: a save taken *while* a council vote is open loses the vote (transient arrays);
 on reload the council re-convenes fresh. Acceptable for now.
 
+**Increment 4 — colonize choice (DONE, 2026-08-08).** A remote human's colony ship no
+longer auto-settles on arrival. The gate in `AI.checkColonize` changed from
+`empire.isAIControlled()` to `empire.decidedByAI()` (a no-op for single-player) so a
+remote human hits the `ColonizeSystemNotification` path instead of `fl.colonizeSystem()`.
+That notification is *queued* (unlike the council one, so no RotPUI hang); server-side it
+is collected by `ServerUI` and `GameServer.collectPostTurnPrompts()` (renamed from
+`collectIncomingDiplomacy`, now handling both diplomacy and colonize) converts it to a
+COLONIZE prompt carrying the system id (new `Prompt.systemId`), after a last-minute
+still-uncolonized/active-fleet check. The human resolves it with the **existing**
+`colonize` command (no new command); ignoring it leaves the ship in orbit and the prompt
+re-raises next turn (correct MOO behavior). Added `systemId()`/`fleet()`/`design()`
+getters to `ColonizeSystemNotification`. Client: `ClientMain.promptColonize` pops yes/no.
+Tests: `ColonizePromptTest` (colony ship prompts instead of auto-colonizing; accepting
+settles the system) — deploys the real colony ship, `assumeTrue` if no colonizable system
+is in range. NOTE: `ShipDesignTransportTest.tryColonize` now reaches the explicit-colonize
+path (no auto-settle), so a `ready()` was added there before its COLONY_GAINED check
+(colony gained via command surfaces the per-turn notification one turn later).
+
 **Increment backlog (each: server prompt + client dialog + a `*Test`):**
-- **Colonize choice** — offer/deny settling on arrival instead of auto-colonize.
 - **Turn timers** — optional per-turn deadline so an absent human doesn't stall a we-go
   turn (default keeps the server's picks).
 
@@ -492,9 +512,10 @@ Phase 5 (browser client). See design doc §7.
   remote humans it now fires only on unallocated ticks (new colonies). **Command
   handlers must never call `col.hasNewOrders(true)`** or wire orders get silently
   rewritten to AI patterns.
-- **Auto-colonize.** Under server autoplay, a colony ship auto-settles a suitable
-  planet on arrival (the colonize prompt auto-resolves). Deliberate v1 behavior;
-  the explicit `colonize` command is for planets the AI declines.
+- **Colonize choice (Phase 3 increment 4).** A remote human's colony ship no longer
+  auto-settles — arrival at a colonizable system raises a COLONIZE prompt, resolved with
+  the `colonize` command (see `AI.checkColonize` gated on `decidedByAI()`). AI empires
+  still auto-settle. Ignoring the prompt leaves the ship in orbit and re-prompts next turn.
 - **Headless boot order.** Server init must mirror `RotPUI`'s data loading:
   `SessionUI.set(new ServerUI())` **first**, then `UserPreferences.load()`,
   `TechLibrary.current()`, `LanguageManager.current().selectedLanguageName()`

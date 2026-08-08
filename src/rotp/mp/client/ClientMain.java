@@ -339,6 +339,8 @@ public class ClientMain {
                             promptIncomingDiplomacy(frame, clientHolder[0], p);
                         else if ("COUNCIL_VOTE".equals(p.type))
                             promptCouncilVote(frame, clientHolder[0], p);
+                        else if ("COLONIZE".equals(p.type))
+                            promptColonize(frame, clientHolder[0], p);
                     }
                 }
                 handleMessage(msg, galaxyPanel, colonyPanel, systemInfoPanel, researchPanel, fleetsPanel, shipDesignPanel, empirePanel, racesPanel, lastView, status, nextTurn);
@@ -466,6 +468,23 @@ public class ClientMain {
             }
         }
         client.sendMessage(v);
+    }
+
+    /**
+     * A COLONIZE prompt: a colony ship is orbiting a settle-able, uncolonized system.
+     * Pops a yes/no dialog and, on yes, sends the existing Colonize command. Declining
+     * (or closing) leaves the colony ship in orbit — the server will ask again next turn.
+     */
+    private static void promptColonize(JFrame frame, NetClient client, Messages.Prompt p) {
+        String body = (p.text == null ? "Colonize this system?" : p.text);
+        int pick = javax.swing.JOptionPane.showConfirmDialog(frame, body,
+            "Colonize", javax.swing.JOptionPane.YES_NO_OPTION,
+            javax.swing.JOptionPane.QUESTION_MESSAGE);
+        if (pick == javax.swing.JOptionPane.YES_OPTION) {
+            Messages.Colonize c = new Messages.Colonize();
+            c.systemId = p.systemId;
+            client.sendMessage(c);
+        }
     }
 
     /** true if the system is one of the player's own colonies (has colony detail in the view) */
