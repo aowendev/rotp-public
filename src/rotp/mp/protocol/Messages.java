@@ -302,6 +302,12 @@ public final class Messages {
     public static class SetSecurity {
         public int allocation;
     }
+
+    /** save the running game to a named file on the server (local, for testing).
+     * Load is done by (re)starting the server with load=<name>. */
+    public static class SaveGame {
+        public String name;
+    }
     // TODO: reserve fund transfers (reserve -> colony, and banking a planet's
     // output into the reserve) are deferred; the TransferReserve command was
     // prototyped and pulled. Re-add here + in GameServer when we take this up.

@@ -63,6 +63,10 @@ public class GameServer extends WebSocketServer {
     private final Map<WebSocket, Player> players = new LinkedHashMap<>();
     /** players who dropped mid-game, kept by name so they can reconnect to their empire */
     private final Map<String, Player> departed = new LinkedHashMap<>();
+    /** save file to resume at startup (null for a new game) */
+    private final String loadFile;
+    /** when resuming a save, the remote-human empire ids not yet claimed by a client */
+    private final java.util.Deque<Integer> unclaimedLoadSlots = new java.util.ArrayDeque<>();
     /** serializes all game-state access (commands vs turn processing) */
     private final Object gameLock = new Object();
     private final NotificationCenter notiCenter = new NotificationCenter();
@@ -90,19 +94,44 @@ public class GameServer extends WebSocketServer {
     };
 
     public GameServer(int port, int humanSlots) {
-        this(port, humanSlots, null);
+        this(port, humanSlots, null, null);
     }
 
     public GameServer(int port, int humanSlots, String galaxySize) {
+        this(port, humanSlots, galaxySize, null);
+    }
+
+    public GameServer(int port, int humanSlots, String galaxySize, String loadFile) {
         super(new InetSocketAddress(port));
         this.humanSlots = humanSlots;
         this.galaxySize = galaxySize;
+        this.loadFile = loadFile;
         setReuseAddr(true);
+        if (loadFile != null)
+            resumeSavedGame();
+    }
+
+    /** load a saved game so clients can reconnect to it (see load= server arg) */
+    private void resumeSavedGame() {
+        String file = loadFile.endsWith(GameSession.SAVEFILE_EXTENSION)
+            ? loadFile : loadFile + GameSession.SAVEFILE_EXTENSION;
+        System.out.println("[server] resuming saved game: " + file);
+        GameSession.instance().loadSession(GameSession.instance().saveDir(), file, false);
+        gameStarted = true;
+        for (Empire e : galaxy().empires())
+            if (e.isRemoteHuman())
+                unclaimedLoadSlots.add(e.id);
+        System.out.println("[server] loaded turn " + galaxy().currentTurn()
+            + " with " + unclaimedLoadSlots.size() + " human slot(s): " + unclaimedLoadSlots);
     }
 
     @Override
     public void onStart() {
-        System.out.println("[server] listening on port "+getPort()+", waiting for "+humanSlots+" player(s)");
+        if (loadFile != null)
+            System.out.println("[server] listening on port "+getPort()
+                +", resumed save (turn "+galaxy().currentTurn()+"); waiting for players to reconnect");
+        else
+            System.out.println("[server] listening on port "+getPort()+", waiting for "+humanSlots+" player(s)");
     }
 
     @Override
@@ -185,6 +214,8 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "setSpyMission", (Messages.SetSpyMission) msg);
         else if (msg instanceof Messages.SetSecurity)
             handleCommand(conn, "setSecurity", (Messages.SetSecurity) msg);
+        else if (msg instanceof Messages.SaveGame)
+            handleSaveGame(conn, (Messages.SaveGame) msg);
         else if (msg instanceof Messages.DiploOffer)
             handleCommand(conn, "diploOffer", (Messages.DiploOffer) msg);
         else if (msg instanceof Messages.BreakTreaty)
@@ -199,6 +230,36 @@ public class GameServer extends WebSocketServer {
             handleStartGame(conn, (Messages.StartGame) msg);
         else
             send(conn, error("Unexpected message"));
+    }
+
+    /** save the running game to a named file on the server (resume via load= arg) */
+    private void handleSaveGame(WebSocket conn, Messages.SaveGame msg) {
+        if (!gameStarted) {
+            send(conn, result("saveGame", false, "Game not started"));
+            return;
+        }
+        if (turnRunning) {
+            send(conn, result("saveGame", false, "Turn is resolving; try again in a moment"));
+            return;
+        }
+        String file = sanitizeSaveName(msg.name) + GameSession.SAVEFILE_EXTENSION;
+        try {
+            synchronized (gameLock) {
+                GameSession.instance().saveSession(file, false);
+            }
+            System.out.println("[server] game saved to " + file);
+            send(conn, result("saveGame", true, "Saved as " + file));
+        }
+        catch (Exception e) {
+            send(conn, result("saveGame", false, "Save failed: " + e));
+        }
+    }
+
+    private static String sanitizeSaveName(String n) {
+        if (n == null)
+            return "mp_save";
+        String s = n.replaceAll("[^A-Za-z0-9_-]", "_").trim();
+        return s.isEmpty() ? "mp_save" : s;
     }
 
     // ---- lobby ----
@@ -217,6 +278,15 @@ public class GameServer extends WebSocketServer {
             Player returning = departed.remove(name);
             if (returning != null) {
                 reconnect(conn, returning);
+                return;
+            }
+            // resuming a saved game: hand the joiner the next unclaimed human empire
+            if (!unclaimedLoadSlots.isEmpty()) {
+                Player p = new Player();
+                p.name = name;
+                p.empireId = unclaimedLoadSlots.poll();
+                System.out.println("[server] "+name+" joined loaded game as empire "+p.empireId);
+                reconnect(conn, p);
                 return;
             }
         }

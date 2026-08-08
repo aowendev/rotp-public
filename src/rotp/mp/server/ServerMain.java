@@ -33,6 +33,7 @@ public class ServerMain {
         int port = intArg(args, "port", DEFAULT_PORT);
         int players = intArg(args, "players", 2);
         String size = galaxySize(stringArg(args, "size", null));
+        String load = stringArg(args, "load", null);   // resume a saved game instead of a new one
 
         // must be registered before anything touches the game session,
         // otherwise the default SessionUI would load the Swing UI
@@ -44,7 +45,7 @@ public class ServerMain {
         TechLibrary.current();
         LanguageManager.current().selectedLanguageName();
 
-        GameServer server = new GameServer(port, players, size);
+        GameServer server = new GameServer(port, players, size, load);
         server.run();  // blocks
     }
 

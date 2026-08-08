@@ -83,6 +83,16 @@ public final class MpTestSupport {
         return new Server(server, port);
     }
 
+    /** Starts a headless server that resumes a saved game (see the load= server arg). */
+    public static Server startServerFromSave(String loadFile) {
+        bootEngine();
+        int port = freePort();
+        GameServer server = new GameServer(port, 1, null, loadFile);
+        server.start();  // non-blocking
+        waitUntilListening(port, 10_000);
+        return new Server(server, port);
+    }
+
     /** block until the server is accepting TCP connections (start() is async) */
     private static void waitUntilListening(int port, long timeoutMs) {
         long deadline = System.currentTimeMillis() + timeoutMs;

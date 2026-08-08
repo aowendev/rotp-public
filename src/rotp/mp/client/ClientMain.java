@@ -158,6 +158,16 @@ public class ClientMain {
         JMenuItem techItem = new JMenuItem("Technology");
         techItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_T, menuMask));
         techItem.addActionListener(e -> researchWindow.setVisible(!researchWindow.isVisible()));
+        JMenuItem saveItem = new JMenuItem("Save Game");
+        saveItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, menuMask));
+        saveItem.addActionListener(e -> {
+            String name = javax.swing.JOptionPane.showInputDialog(frame, "Save name:", "mp_save");
+            if ((name != null) && !name.trim().isEmpty()) {
+                Messages.SaveGame sg = new Messages.SaveGame();
+                sg.name = name.trim();
+                clientHolder[0].sendMessage(sg);
+            }
+        });
         JMenuItem racesItem = new JMenuItem("Races");
         racesItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, menuMask));
         racesItem.addActionListener(e -> racesWindow.setVisible(!racesWindow.isVisible()));
@@ -165,6 +175,7 @@ public class ClientMain {
         nextTurnItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, menuMask));
         nextTurnItem.addActionListener(e -> { if (nextTurn.isEnabled()) ready.run(); });
         misc.add(techItem);
+        misc.add(saveItem);
         misc.add(racesItem);
         misc.add(nextTurnItem);
         menuBar.add(misc);
@@ -378,7 +389,9 @@ public class ClientMain {
         }
         else if (msg instanceof Messages.CommandResult) {
             Messages.CommandResult cr = (Messages.CommandResult) msg;
-            if (!cr.ok)
+            if ("saveGame".equals(cr.command))
+                status.setText(cr.text);                 // show save success/failure
+            else if (!cr.ok)
                 status.setText("Order rejected ("+cr.command+"): "+cr.text);
         }
         else if (msg instanceof Messages.DesignCatalog) {

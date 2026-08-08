@@ -5,7 +5,15 @@ how to run what exists, and exactly what to do next. The full design rationale i
 in [`multiplayer-design.md`](multiplayer-design.md); this is the operational
 "pick up here" note.
 
-_Last updated: 2026-08-06 — Phase 1.5 backlog addressed; **Phase 2 session-completeness work landed** during a live solo test session: a **Races/diplomacy client panel** (⌘R — the outgoing diplomacy commands finally have a UI), **client reconnection** (a dropped client rejoins its empire by name, so a game survives a client relaunch), and a **lobby galaxy-size picker** and an **"AI ability" (difficulty) picker** (host chooses size + AI strength before Start), and **colony spending upgrades** (per-category result hints — years-to-complete / output-per-year / waste-clean-or-+n-pop / research points — plus **live server-computed projections while dragging** and **per-category locks**). 60 tests green. Remaining: one human sign-off playthrough to final win/loss. See "Do this next"._
+_Last updated: 2026-08-08 — **Phase 1.5 signed off** (human validated the full
+economy→research→build→expand→diplomacy loop across all core screens). A large
+session-completeness batch landed live: Races/diplomacy panel (⌘R) with spy controls
++ report + leader disposition; client reconnection; lobby galaxy-size + AI-ability
+pickers; colony live projections + per-category locks + eco-at-max + richer readout +
+max-bases; research progress % + tech-completion alert + research locks; a richer
+Empire Overview (planets window); one-decimal ship-range display; and **minimal
+local save/load** (Save Game ⌘S; resume with `load=<name>`). **61 tests green.** Next:
+Phase 2 remaining (lobby color picks) and Phase 3 (interactive prompts). See "Then — Phase 2"._
 
 ## Where we are
 
@@ -21,7 +29,7 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **60 JUnit integration tests, green.**
+projections and per-category locks**. **61 JUnit integration tests, green.**
 
 **Continuing Phase 2** (LAN & session completeness) — see "Do this next".
 Built on `7a2cdd95` (Phase 2 lobby AI-fill); the Races panel, client reconnection,
@@ -43,6 +51,11 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp --server port=8777 players=2 s
 java -cp "target/classes:$(cat cp.txt)" rotp.Rotp --client host=localhost port=8777 name=Alice
 # solo vs AI: `players=1` auto-starts alone; or with players=N the first client
 # (the host) presses Start in the lobby to begin with AI filling the empty slots
+
+# save/load (local, for testing): in-game, Misc -> Save Game (Cmd-S) writes <name>.rotp
+# to the server's save dir. Resume by (re)starting the server with load=<name>:
+java -cp "target/classes:$(cat cp.txt)" rotp.Rotp --server port=8777 load=mysave
+# then reconnect a client (same name) — it rejoins its empire at the saved turn.
 
 # classic offline single-player still works, unchanged
 java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
@@ -150,7 +163,7 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   applied via `selectedGameDifficulty`. Deliberately labelled **"AI ability"** on
   the client, since the level scales the AI's economy (a stronger opponent), not a
   human puzzle-difficulty. See the option-set-mismatch TODO under Phase 2.
-- Verified by `itest/rotp/mp/` (60 tests): order/isolation, design/transport,
+- Verified by `itest/rotp/mp/` (61 tests): order/isolation, design/transport,
   spy/diplomacy (also assert notification delivery incl. TECH), the colony /
   research / fleets / ship-design / empire-overview screens (redistribution, DTO
   load, map click hit-test + fleet-destination, build-option load, research-choice
@@ -168,14 +181,23 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   Harness: `startServer` waits for the port to listen, then each client connects
   once (a WebSocketClient can't be reconnected — old retry loop was flaky).
 
-## Do this next — Phase 1.5 (human-validated full playthrough)
+## Phase 1.5 — human-validated playthrough: **DONE** (2026-08-08)
 
-**This is the current focus** (decided 2026-07-29 after a live solo play session).
-Goal: prove by *actually playing* that a complete solo game can be played
-**start → win/loss** in the Java reference client, and fix every gap that blocks
-completion. **API-completeness-first, NOT UI polish** — the Java client is a
-validation harness, not the product; real UX is deferred to the browser client
-(Swing polish is throwaway). Add only enough Java UI to reach each action.
+**Signed off.** A human played a solo game far enough to confirm the whole
+economy→research→build→expand→diplomacy loop behaves as expected across all the
+core screens (they didn't drive it to a literal win/loss, but nothing misbehaved
+and every action was reachable). During that validation a large batch of
+completeness gaps surfaced and were fixed live — colony live-projections + locks +
+eco-at-max + richer readout + max-bases, research progress % + completion alert +
+locks, Races spy controls + report + leader disposition, the richer Empire
+Overview, the lobby galaxy-size / AI-ability pickers, one-decimal ship-range
+display, client reconnection, and minimal save/load. Phase 1.5's original goal
+(API-completeness-first, add only enough Java UI to reach each action) is met.
+
+Historical goal (kept for context): prove by *actually playing* that a complete
+solo game can be played **start → win/loss** in the Java reference client, and fix
+every gap that blocks completion. The Java client is a validation harness, not the
+product; real UX is deferred to the browser client (Swing polish is throwaway).
 
 A playthrough must exercise: pick a **race** (+color; homeworld named by race) →
 explore & **colonize** (usable dispatch) → research incl. **choosing** what to
@@ -293,12 +315,20 @@ before this). See `GameServer.difficultyOptions()` and `DifficultyTest`.
 > already validates against ROTP's `galaxySizeOptions()` / `gameDifficultyOptions()`,
 > so narrowing is a client/lobby concern, not an engine change.
 
+**DONE — minimal save/load** (local, testing-focused). The host saves the running
+game with the **Save Game** menu item (⌘S → name) → `saveGame` command →
+`GameSession.saveSession(name.rotp)` in the server's save dir. To resume, start the
+server with **`load=<name>`** (`ServerMain` → `GameServer(..., loadFile)` →
+`resumeSavedGame()` → `loadSession`, `gameStarted=true`); connecting clients are
+handed the save's `remoteHuman` empires (which serialize with the game) via the
+existing `reconnect(...)` path (by-order for now; name matching is a later nicety).
+`SaveLoadTest` covers save→resume→continue. **Future:** a client-driven mid-session
+load (no server restart), and — eventually — importing **original MOO1 save files**
+(a format-translation task, separate from this ROTP-native serialization).
+
 Remaining Phase 2:
 
-1. **Multiplayer save/load**: the whole `GameSession` already serializes
-   (`saveSession`/`loadSession`); add lobby actions to save/restore a running game,
-   including the `remoteHuman` flags.
-2. **Lobby polish**: color picks before start (race + galaxy size now done; symmetric
+1. **Lobby polish**: color picks before start (race + galaxy size now done; symmetric
    color picker still needs the opponent-color plumbing noted under Phase 1.5 #1).
 
 Deferred Phase-1 polish (pick up any time): per-design partial fleet deploys
@@ -384,6 +414,7 @@ Phase 5 (browser client). See design doc §7.
   `reconnect`); the lobby galaxy-size pick in `GameServer.sizeOptions()` +
   `handleStartGame`, surfaced via `Messages.SizeOptions` / `StartGame.galaxySize`.
 - `itest/rotp/mp/` — integration tests + `MpTestSupport` harness (new:
-  `RacesScreenTest`, `ReconnectTest`, `GalaxySizeTest`, `DifficultyTest`).
+  `RacesScreenTest`, `ReconnectTest`, `GalaxySizeTest`, `DifficultyTest`,
+  `SaveLoadTest`).
 - Engine seams: `rotp.model.game.SessionUI`; `Empire.decidedByAI/isRemoteHuman`;
   moved statics in `Rotp` (scaling, debug file) and `GameSession` (pending options).
