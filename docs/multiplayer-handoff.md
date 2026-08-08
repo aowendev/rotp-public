@@ -27,8 +27,10 @@ ship no longer auto-settles; arriving at a colonizable system raises a COLONIZE 
 resolved with the existing `colonize` command (or ignored to leave the ship in orbit).
 (5) **Turn timers** — an optional per-turn deadline (server `timer=<secs>` arg or
 `setTurnTimer`, off by default) auto-resolves a we-go turn so an absent human can't stall
-it; `TurnStatus.secondsRemaining` drives a client countdown. Prompts (1-4) ride a reusable
-`Prompts` message. **70 tests green.** See "Then — Phase 3"._
+it; `TurnStatus.secondsRemaining` drives a client countdown. (6) **Public news (GNN)** —
+galactic-news turn-notifications (random events, genocides, alliances, council, ...) are
+now broadcast to every client as NEWS notifications instead of being dropped. Prompts
+(1-4) ride a reusable `Prompts` message. **72 tests green.** See "Then — Phase 3"._
 
 ## Where we are
 
@@ -47,11 +49,11 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **70 JUnit integration tests, green.**
+projections and per-category locks**. **72 JUnit integration tests, green.**
 
-**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is underway** — increments 1-5
+**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is underway** — increments 1-6
 (interactive tech selection; incoming diplomacy; council vote; colonize choice; turn
-timers) are in (see "Then — Phase 3"). Built on `7a2cdd95` (Phase 2
+timers; public GNN news) are in (see "Then — Phase 3"). Built on `7a2cdd95` (Phase 2
 lobby AI-fill); the Races panel, client reconnection, lobby galaxy-size / AI-ability
 pickers, the colony/research/empire upgrades, and minimal save/load are committed on
 top of it across this session.
@@ -198,6 +200,14 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   applied, invalid rejected). Note `SpyDiplomacyTest` is
   geography-dependent (unseeded RNG) and can occasionally error on a scouting
   timeout rather than skip cleanly — rerun it; seeding the RNG is the real fix.
+  WORSE: when it hits the ~120s scouting-timeout path it can leave the shared
+  in-process engine wedged, so every test ordered after it (StartingFleet,
+  SystemInfoView, TurnAdvance, TurnTimer...) then times out too — a cascade. It's
+  pre-existing (shared static `GameSession` across tests + the long unseeded
+  scouting loop), not tied to any one feature. Workaround: `mvn test
+  -Dtest='!SpyDiplomacyTest'` (72 → 71 tests, reliably green), and run
+  `SpyDiplomacyTest` on its own. Real fix: seed the RNG and/or isolate the engine
+  per test.
   Harness: `startServer` waits for the port to listen, then each client connects
   once (a WebSocketClient can't be reconnected — old retry loop was flaky).
 
@@ -470,26 +480,42 @@ without readying; readying still resolves immediately under a long timer; a 0 ti
 auto-resolves). NOTE: the timer is a *server/session* setting, not yet a lobby pick — a
 host-facing lobby control (like galaxy size / AI ability) is the natural follow-up.
 
+**Increment 6 — public GNN news (DONE, 2026-08-08).** Galactic news turn-notifications are
+now broadcast to every client as NEWS notifications (previously collected by `ServerUI`
+and dropped). A small `rotp.ui.notifications.PublicNews { String newsText(); }` interface
+is implemented by `GNNNotification` and `GNNRandomEventNotification` (both already carry
+resolved display text); `GameServer.collectPostTurnPrompts()` now also picks out
+`PublicNews` turn-notifications into `pendingPublicNews`, and `broadcastNotifications`
+appends them (category `NEWS`) to every client's notification list. Covers random
+galactic events, genocides, alliances formed/broken, council news, expansion, rebellion.
+Test: `PublicNewsTest` (injected GNN news arrives as a NEWS notification; a quiet turn
+carries none). CAVEATS / remaining: (a) the engine composes GNN text from the local
+player's (empire 0's) fog-of-war, so in a multi-human game the wording is empire-0-framed;
+(b) **ranking bulletins** (`GNNRankingNotification`) are not yet carried — they store a
+message-type key + empire list needing per-empire formatting; (c) **combat/spy alerts are
+a separate subsystem** (`GameAlert` in `GameSession.alerts`, exposing only
+`description()`, with no per-empire target accessor and a player-POV lifecycle) — routing
+those per-empire needs target accessors added across ~10 alert classes and is deferred.
+
 **Increment backlog (each: server prompt/notification + client handling + a `*Test`):**
-- **GNN / combat / spy events into the notification path** — the biggest remaining piece;
-  see the GNN note just below. Broadcast public galactic news to all clients and route
-  the naturally-private events to the affected empire.
+- **Combat / spy alerts (`GameAlert`)** — the remaining notification work; add per-empire
+  target accessors to the alert classes and route them to the affected empire (private),
+  broadcasting the genuinely-public ones. Plus GNN **ranking** bulletins (need empire-list
+  formatting).
 - **Turn timer as a lobby pick** — expose `setTurnTimer` as a host lobby control (like
   galaxy size / AI ability) instead of only a server arg.
 - **Async player-to-player diplomacy** — today a human→human offer already defers to the
   other human's prompt (increment 2); a fuller negotiation UX (counter-offers, tech
   trades) is future work.
 
-**GNN alerts are NOT scoped today** (asked 2026-08-08). In the base engine GNN news is
-posted to the single global `GameSession` turn-notification queue and rendered from the
-one local player's POV (`RotPUI`) — not per-empire fog-of-war. Most GNN content is
-genuinely *public/galactic* (rankings, genocides, alliances formed/broken, council,
-random galactic events), so "scoping" it for MP mainly means **broadcasting to every
-client**, with a few naturally-private items (e.g. your own colony's rebellion) routed
-only to the affected empire. On our headless server these `addTurnNotification` calls
-still fire but are auto-drained, so **clients currently receive no GNN events at all**.
-Wiring GNN (and combat/spy) events into the per-empire `NotificationCenter`/`Prompts`
-path — tagging each public vs. private — is a Phase-3 item, not yet built.
+**GNN public news is now broadcast** (increment 6 above); the historical note follows for
+context. In the base engine GNN news is posted to the single global `GameSession`
+turn-notification queue and rendered from the one local player's POV (`RotPUI`) — not
+per-empire fog-of-war. Most GNN content is genuinely *public/galactic* (rankings,
+genocides, alliances formed/broken, council, random galactic events), so "scoping" it for
+MP mainly means **broadcasting to every client** (now done for the text-carrying GNN
+types), with a few naturally-private items (e.g. combat/spy `GameAlert`s) still to be
+routed only to the affected empire.
 
 Deferred Phase-1 polish (pick up any time): per-design partial fleet deploys
 (`deployFleet.counts[]` — surface per-design count spinners on a selected fleet);

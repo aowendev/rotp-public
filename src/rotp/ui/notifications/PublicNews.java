@@ -1,12 +1,12 @@
 /*
  * Copyright 2015-2020 Ray Fowler
- * 
+ *
  * Licensed under the GNU General Public License, Version 3 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     https://www.gnu.org/licenses/gpl-3.0.html
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,24 +15,13 @@
  */
 package rotp.ui.notifications;
 
-import rotp.ui.RotPUI;
-
-public class GNNRandomEventNotification implements TurnNotification, PublicNews {
-    private final String type;
-    private final String eventId;
-
-    public GNNRandomEventNotification(String messageType, String id) {
-        type = messageType;
-        eventId = id;
-    }
-    @Override
-    public String newsText()     { return type; }
-    @Override
-    public String key()          { return eventId; }
-    @Override
-    public String displayOrder() { return RANDOM_EVENT; }
-    @Override
-    public void notifyPlayer() {
-        RotPUI.instance().selectGNNPanel(type, eventId, null);
-    }
+/**
+ * A turn notification that is public galactic news (GNN) — the same story for every
+ * empire, so the multiplayer server can broadcast its text to all clients rather than
+ * routing it per-empire. Implemented by the GNN notification types that already carry
+ * ready-to-display text.
+ */
+public interface PublicNews {
+    /** the already-resolved, human-readable news text */
+    String newsText();
 }

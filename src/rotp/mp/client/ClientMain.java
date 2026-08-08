@@ -161,10 +161,10 @@ public class ClientMain {
         JMenuItem saveItem = new JMenuItem("Save Game");
         saveItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, menuMask));
         saveItem.addActionListener(e -> {
-            String name = javax.swing.JOptionPane.showInputDialog(frame, "Save name:", "mp_save");
-            if ((name != null) && !name.trim().isEmpty()) {
+            String saveName = javax.swing.JOptionPane.showInputDialog(frame, "Save name:", "mp_save");
+            if ((saveName != null) && !saveName.trim().isEmpty()) {
                 Messages.SaveGame sg = new Messages.SaveGame();
-                sg.name = name.trim();
+                sg.name = saveName.trim();
                 clientHolder[0].sendMessage(sg);
             }
         });

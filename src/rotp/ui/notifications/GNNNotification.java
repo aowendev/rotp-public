@@ -20,7 +20,7 @@ import rotp.model.empires.Empire;
 import rotp.model.game.GameSession;
 import rotp.ui.RotPUI;
 
-public class GNNNotification implements TurnNotification {
+public class GNNNotification implements TurnNotification, PublicNews {
     private final String message;
     private final String eventId;
 
@@ -55,6 +55,8 @@ public class GNNNotification implements TurnNotification {
         message = msg;
         eventId = id;
     }
+    @Override
+    public String newsText() { return message; }
     @Override
     public String displayOrder() { return GNN_NOTIFY; }
     @Override

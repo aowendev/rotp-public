@@ -80,6 +80,8 @@ public class GameServer extends WebSocketServer {
     /** interactive prompts raised during this turn's post-processing (incoming diplomacy,
      * council votes), keyed by the empire that must respond; broadcast as Prompts */
     private final Map<Integer, List<Messages.Prompt>> pendingPrompts = new HashMap<>();
+    /** public galactic news (GNN) from this turn, broadcast to every client as NEWS notifications */
+    private final List<Messages.Notification> pendingPublicNews = new ArrayList<>();
     private WebSocket hostConn;   // first player to join; may start the game
     private volatile boolean starting = false;
     private volatile boolean gameStarted = false;
@@ -1519,10 +1521,14 @@ public class GameServer extends WebSocketServer {
                 synchronized (gameLock) {
                     result = notiCenter.update(emp);
                 }
-                if (!result.notifications.isEmpty()) {
+                // this empire's own events (colony/tech/contact/diplomacy) plus the
+                // public galactic news (GNN) that every client sees this turn
+                List<Messages.Notification> items = new ArrayList<>(result.notifications);
+                items.addAll(pendingPublicNews);
+                if (!items.isEmpty()) {
                     Messages.Notifications msg = new Messages.Notifications();
                     msg.turn = galaxy().currentTurn();
-                    msg.items = result.notifications;
+                    msg.items = items;
                     send(e.getKey(), Protocol.encode(msg));
                 }
                 // merge state-diff prompts (e.g. SELECT_TECH) with the interactive
@@ -1552,6 +1558,7 @@ public class GameServer extends WebSocketServer {
      */
     private void collectPostTurnPrompts() {
         pendingPrompts.clear();
+        pendingPublicNews.clear();
         SessionUI ui = SessionUI.get();
         if (!(ui instanceof ServerUI))
             return;
@@ -1560,7 +1567,32 @@ public class GameServer extends WebSocketServer {
                 collectDiplomacyPrompt((DiplomaticNotification) tn);
             else if (tn instanceof ColonizeSystemNotification)
                 collectColonizePrompt((ColonizeSystemNotification) tn);
+            else if (tn instanceof rotp.ui.notifications.PublicNews)
+                collectPublicNews((rotp.ui.notifications.PublicNews) tn);
         }
+    }
+
+    /**
+     * Public galactic news (GNN): the same story for every empire, so it is broadcast to
+     * all clients as a NEWS notification rather than routed per-empire. v1 caveat: the
+     * engine composes GNN text from the local player's (empire 0's) fog-of-war, so in a
+     * multi-human game the wording is empire-0-framed. Ranking bulletins are not yet
+     * carried (they need per-empire formatting from an empire list).
+     */
+    private void collectPublicNews(rotp.ui.notifications.PublicNews news) {
+        String text = news.newsText();
+        if ((text == null) || text.trim().isEmpty())
+            return;
+        pendingPublicNews.add(note("NEWS", text.trim(), -1, -1));
+    }
+
+    private static Messages.Notification note(String category, String text, int systemId, int empireId) {
+        Messages.Notification n = new Messages.Notification();
+        n.category = category;
+        n.text = text;
+        n.systemId = systemId;
+        n.empireId = empireId;
+        return n;
     }
 
     private void collectDiplomacyPrompt(DiplomaticNotification dn) {

@@ -328,6 +328,15 @@ public final class MpTestSupport {
         return false;
     }
 
+    /** the first drained notification of the given category, or null if none */
+    public static Messages.Notification firstNotification(Client c, String category) {
+        for (Messages.Notifications ns : drain(c.notifications))
+            for (Messages.Notification n : ns.items)
+                if (category.equals(n.category))
+                    return n;
+        return null;
+    }
+
     /** the first drained Prompt of the given type, or null if none has arrived */
     public static Messages.Prompt firstPrompt(Client c, String type) {
         for (Messages.Prompts ps : drain(c.prompts))
