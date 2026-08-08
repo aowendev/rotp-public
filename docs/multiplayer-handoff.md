@@ -15,11 +15,13 @@ Empire Overview (planets window); one-decimal ship-range display; and **minimal
 local save/load** (Save Game ⌘S; resume with `load=<name>`). **Phase 2
 is complete** — its two open items (player-color selection and the galaxy-size
 option set) are deferred to the web client, not built in the Java reference client.
-**Phase 3 is now underway: increment 1 (interactive tech selection) is in.** When a
-research category completes a tech, the server raises a **self-contained SELECT_TECH
-prompt** (a new `Prompts` message carrying the category's available techs); the client
-pops a chooser and the pick overrides the server's auto-selected default. **62 tests
-green.** See "Then — Phase 3"._
+**Phase 3 is now underway: increments 1-2 are in.** (1) Interactive **tech selection** —
+when a research category completes a tech, the server raises a self-contained SELECT_TECH
+prompt and the client pops a chooser. (2) **Incoming diplomacy** — when another empire
+offers a treaty/trade to a remote human, the offer is now deferred (not auto-resolved)
+and delivered as an INCOMING_DIPLOMACY prompt the human accepts/declines (resolved with
+`respondDiplomacy`). Both ride a reusable `Prompts` message. **64 tests green.** See
+"Then — Phase 3"._
 
 ## Where we are
 
@@ -38,10 +40,10 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **62 JUnit integration tests, green.**
+projections and per-category locks**. **64 JUnit integration tests, green.**
 
-**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is underway** — increment 1,
-interactive tech selection, is in (see "Then — Phase 3"). Built on `7a2cdd95` (Phase 2
+**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is underway** — increments 1-2
+(interactive tech selection; incoming diplomacy) are in (see "Then — Phase 3"). Built on `7a2cdd95` (Phase 2
 lobby AI-fill); the Races panel, client reconnection, lobby galaxy-size / AI-ability
 pickers, the colony/research/empire upgrades, and minimal save/load are committed on
 top of it across this session.
@@ -379,9 +381,26 @@ existing `SetResearchChoice` (no new resolve message). Test:
 `ResearchScreenTest.completingResearchRaisesAnInteractiveSelectTechPrompt`
 (+ `MpTestSupport.Client.prompts` queue and `firstPrompt` helper).
 
+**Increment 2 — incoming diplomacy (DONE, 2026-08-08).** The four receive-offer AI gates
+(`receiveOfferTrade/Peace/Pact/Alliance`) in all three AIDiplomat variants (base/modnar/
+xilmi) were changed from `empire.isPlayerControlled()` to `!empire.decidedByAI()` — a
+**no-op for single-player** (the two are identical there) that makes a *remote* human's
+empire defer an incoming offer (queue a `DiplomaticNotification`, return null) instead of
+auto-resolving it. After each turn, `GameServer.collectIncomingDiplomacy()` drains the
+engine's turn-notification queue (via `ServerUI.drainNotifications()`), converts each
+deferred offer aimed at a connected human into an `INCOMING_DIPLOMACY` prompt (requestor
+id + action), and `broadcastNotifications` sends them alongside the state-diff prompts.
+Client: `ClientMain.promptIncomingDiplomacy` pops accept/decline → new `respondDiplomacy`
+command → `GameServer.applyRespondDiplomacy` calls the human empire's own diplomat
+(`acceptOfferPact` etc.), mirroring what the single-player UI does on click. Trade level
+is recovered server-side from `view.trade().maxLevel()` (as the SP `OfferTradeMessage`
+does), so the prompt needs no level field. Tests: `DiplomacyPromptTest` (accept signs the
+pact; decline leaves none) — triggered deterministically through the in-process engine.
+NOTE: outgoing offers to an AI are unaffected (the AI target is `decidedByAI`, still
+answers immediately via `DiploReply`); a human→human offer now correctly defers to the
+other human's prompt.
+
 **Increment backlog (each: server prompt + client dialog + a `*Test`):**
-- **Incoming diplomacy** — an AI/human offer (trade/pact/alliance/peace) arrives as a
-  prompt the human accepts/rejects, instead of today's fire-and-forget `DiploReply`.
 - **Council vote** — when the Galactic Council convenes, prompt the human to cast a vote
   (engine auto-abstains/auto-votes for AI-controlled empires today).
 - **Colonize choice** — offer/deny settling on arrival instead of auto-colonize.

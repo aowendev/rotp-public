@@ -16,6 +16,8 @@
 package rotp.mp.server;
 
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +40,11 @@ import rotp.model.tech.TechCategory;
 import rotp.model.tech.TechTree;
 import rotp.mp.protocol.Messages;
 import rotp.mp.protocol.Protocol;
+import rotp.model.game.SessionUI;
+import rotp.ui.diplomacy.DialogueManager;
 import rotp.ui.diplomacy.DiplomaticReply;
+import rotp.ui.notifications.DiplomaticNotification;
+import rotp.ui.notifications.TurnNotification;
 
 /**
  * Multiplayer server: we-go turns over an authoritative headless game.
@@ -70,6 +76,9 @@ public class GameServer extends WebSocketServer {
     /** serializes all game-state access (commands vs turn processing) */
     private final Object gameLock = new Object();
     private final NotificationCenter notiCenter = new NotificationCenter();
+    /** incoming diplomacy offers deferred this turn, keyed by the offered-to empire id;
+     * built from the engine's turn-notification queue and broadcast as INCOMING_DIPLOMACY prompts */
+    private final Map<Integer, List<Messages.Prompt>> pendingDiploPrompts = new HashMap<>();
     private WebSocket hostConn;   // first player to join; may start the game
     private volatile boolean starting = false;
     private volatile boolean gameStarted = false;
@@ -222,6 +231,8 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "breakTreaty", (Messages.BreakTreaty) msg);
         else if (msg instanceof Messages.DeclareWar)
             handleCommand(conn, "declareWar", (Messages.DeclareWar) msg);
+        else if (msg instanceof Messages.RespondDiplomacy)
+            handleCommand(conn, "respondDiplomacy", (Messages.RespondDiplomacy) msg);
         else if (msg instanceof Messages.DesignCatalog)
             handleDesignCatalog(conn);
         else if (msg instanceof Messages.PickRace)
@@ -650,6 +661,7 @@ public class GameServer extends WebSocketServer {
                     p.ready = false;
             }
             lowerMaxedColonyEcoToClean();
+            collectIncomingDiplomacy();
             broadcastNotifications();
             broadcastViews();
             checkGameOver();
@@ -722,8 +734,10 @@ public class GameServer extends WebSocketServer {
                 err = applyDiploOffer(conn, emp, (Messages.DiploOffer) cmd);
             else if (cmd instanceof Messages.BreakTreaty)
                 err = applyBreakTreaty(emp, (Messages.BreakTreaty) cmd);
-            else
+            else if (cmd instanceof Messages.DeclareWar)
                 err = applyDeclareWar(emp, (Messages.DeclareWar) cmd);
+            else
+                err = applyRespondDiplomacy(emp, (Messages.RespondDiplomacy) cmd);
         }
         send(conn, result(name, err == null, err == null ? "OK" : err));
         // successful orders change computed values (production, research);
@@ -1231,6 +1245,49 @@ public class GameServer extends WebSocketServer {
         return null;
     }
 
+    /**
+     * The human's answer to an INCOMING_DIPLOMACY prompt: another empire (cmd.empireId)
+     * offered a treaty/trade to this empire, and the human accepts or refuses. The
+     * offer was deferred server-side (see AIDiplomat receive-offer gates on
+     * decidedByAI); resolving it here calls the human empire's own diplomat, mirroring
+     * what the single-player UI does when the local player clicks accept/decline.
+     */
+    private String applyRespondDiplomacy(Empire emp, Messages.RespondDiplomacy cmd) {
+        EmpireView ev = contactedView(emp, cmd.empireId);
+        if (ev == null)
+            return "No contact with that empire";
+        Empire requestor = galaxy().empire(cmd.empireId);
+        String action = (cmd.action == null) ? "" : cmd.action.toUpperCase();
+        switch (action) {
+            case "TRADE":
+                if (cmd.accept)
+                    emp.diplomatAI().acceptOfferTrade(requestor, ev.trade().maxLevel());
+                else
+                    emp.diplomatAI().refuseOfferTrade(requestor, ev.trade().maxLevel());
+                return null;
+            case "PEACE":
+                if (cmd.accept)
+                    emp.diplomatAI().acceptOfferPeace(requestor);
+                else
+                    emp.diplomatAI().refuseOfferPeace(requestor);
+                return null;
+            case "PACT":
+                if (cmd.accept)
+                    emp.diplomatAI().acceptOfferPact(requestor);
+                else
+                    emp.diplomatAI().refuseOfferPact(requestor);
+                return null;
+            case "ALLIANCE":
+                if (cmd.accept)
+                    emp.diplomatAI().acceptOfferAlliance(requestor);
+                else
+                    emp.diplomatAI().refuseOfferAlliance(requestor);
+                return null;
+            default:
+                return "Action must be TRADE, PEACE, PACT, or ALLIANCE";
+        }
+    }
+
     private String applyBreakTreaty(Empire emp, Messages.BreakTreaty cmd) {
         EmpireView ev = contactedView(emp, cmd.empireId);
         if (ev == null)
@@ -1354,13 +1411,71 @@ public class GameServer extends WebSocketServer {
                     msg.items = result.notifications;
                     send(e.getKey(), Protocol.encode(msg));
                 }
-                if (!result.prompts.isEmpty()) {
+                // merge state-diff prompts (e.g. SELECT_TECH) with incoming-diplomacy
+                // prompts deferred from the engine's turn-notification queue this turn
+                List<Messages.Prompt> prompts = new ArrayList<>(result.prompts);
+                List<Messages.Prompt> diplo = pendingDiploPrompts.get(emp.id);
+                if (diplo != null)
+                    prompts.addAll(diplo);
+                if (!prompts.isEmpty()) {
                     Messages.Prompts msg = new Messages.Prompts();
                     msg.turn = galaxy().currentTurn();
-                    msg.items = result.prompts;
+                    msg.items = prompts;
                     send(e.getKey(), Protocol.encode(msg));
                 }
             }
+        }
+    }
+
+    /**
+     * Drain the engine's per-turn notification queue (collected headlessly by
+     * {@link ServerUI}) and convert deferred diplomatic offers aimed at a remote human
+     * into INCOMING_DIPLOMACY prompts. The offers were deferred (not auto-resolved)
+     * because the receive-offer AI gates now fire for remote humans too (see
+     * {@code decidedByAI()} in AIDiplomat). Other turn notifications are ignored here;
+     * per-empire event notifications come from {@link NotificationCenter}.
+     */
+    private void collectIncomingDiplomacy() {
+        pendingDiploPrompts.clear();
+        SessionUI ui = SessionUI.get();
+        if (!(ui instanceof ServerUI))
+            return;
+        for (TurnNotification tn : ((ServerUI) ui).drainNotifications()) {
+            if (!(tn instanceof DiplomaticNotification))
+                continue;
+            DiplomaticNotification dn = (DiplomaticNotification) tn;
+            String action = diploActionFor(dn.type());
+            if ((action == null) || (dn.view() == null))
+                continue;
+            Empire target = dn.view().empire();   // requestor.viewForEmpire(target) -> empire() is the offered-to empire
+            Empire requestor = dn.talker();
+            if ((target == null) || (requestor == null))
+                continue;
+            Messages.Prompt p = new Messages.Prompt();
+            p.type = "INCOMING_DIPLOMACY";
+            p.action = action;
+            p.empireId = requestor.id;
+            p.text = requestor.name() + " proposes " + diploLabel(action);
+            pendingDiploPrompts.computeIfAbsent(target.id, k -> new ArrayList<>()).add(p);
+        }
+    }
+
+    /** map a DialogueManager offer type to our protocol action, or null if not an offer */
+    private static String diploActionFor(String type) {
+        if (DialogueManager.OFFER_TRADE.equals(type))    return "TRADE";
+        if (DialogueManager.OFFER_PEACE.equals(type))    return "PEACE";
+        if (DialogueManager.OFFER_PACT.equals(type))     return "PACT";
+        if (DialogueManager.OFFER_ALLIANCE.equals(type)) return "ALLIANCE";
+        return null;
+    }
+
+    private static String diploLabel(String action) {
+        switch (action) {
+            case "TRADE":    return "a trade agreement";
+            case "PEACE":    return "a peace treaty";
+            case "PACT":     return "a non-aggression pact";
+            case "ALLIANCE": return "an alliance";
+            default:         return action;
         }
     }
 

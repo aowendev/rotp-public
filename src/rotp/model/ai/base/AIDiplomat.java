@@ -398,7 +398,7 @@ public class AIDiplomat implements Base, Diplomat {
     public DiplomaticReply receiveOfferTrade(Empire requestor, int level) {
         // if the AI is asking the player, create an OfferTrade notification
         log(empire.name(), " receiving offer trade from: ", requestor.name(), "  for:", str(level), " BC");
-        if (empire.isPlayerControlled()) {
+        if (!empire.decidedByAI()) {   // multiplayer: remote humans decide for themselves too
             DiplomaticNotification.create(requestor.viewForEmpire(empire), DialogueManager.OFFER_TRADE);
             return null;
         }
@@ -519,7 +519,7 @@ public class AIDiplomat implements Base, Diplomat {
     @Override
     public DiplomaticReply receiveOfferPeace(Empire requestor) {
         log(empire.name(), " receiving offer of Peace from: ", requestor.name());
-        if (empire.isPlayerControlled()) {
+        if (!empire.decidedByAI()) {   // multiplayer: remote humans decide for themselves too
             DiplomaticNotification.create(requestor.viewForEmpire(empire), DialogueManager.OFFER_PEACE);
             return null;
         }
@@ -590,7 +590,7 @@ public class AIDiplomat implements Base, Diplomat {
     public DiplomaticReply receiveOfferPact(Empire requestor) {
         log(empire.name(), " receiving offer of Pact from: ", requestor.name());
         EmpireView v = empire.viewForEmpire(requestor);
-        if (empire.isPlayerControlled()) {
+        if (!empire.decidedByAI()) {   // multiplayer: remote humans decide for themselves too
             DiplomaticNotification.create(requestor.viewForEmpire(empire), DialogueManager.OFFER_PACT);
             return null;
         }
@@ -661,7 +661,7 @@ public class AIDiplomat implements Base, Diplomat {
     @Override
     public DiplomaticReply receiveOfferAlliance(Empire requestor) {
         log(empire.name(), " receiving offer of Alliance from: ", requestor.name());
-        if (empire.isPlayerControlled()) {
+        if (!empire.decidedByAI()) {   // multiplayer: remote humans decide for themselves too
             DiplomaticNotification.create(requestor.viewForEmpire(empire), DialogueManager.OFFER_ALLIANCE);
             return null;
         }

@@ -362,9 +362,11 @@ public final class Messages {
     /**
      * server -> client: interactive decisions awaiting the player this turn (Phase 3).
      * The human resolves each via the matching command; if left unresolved the server's
-     * AI default stands. v1 covers SELECT_TECH (choose the next tech in a category that
-     * just completed one — resolve with setResearchChoice). Diplomacy/council prompts
-     * will reuse this envelope.
+     * AI default stands. Types:
+     *   SELECT_TECH        - choose the next tech in a category that just completed one
+     *                        (resolve with setResearchChoice)
+     *   INCOMING_DIPLOMACY - another empire is offering a treaty/trade to you
+     *                        (resolve with respondDiplomacy)
      */
     public static class Prompts {
         public int turn;
@@ -372,7 +374,7 @@ public final class Messages {
     }
 
     public static class Prompt {
-        public String type;       // "SELECT_TECH"
+        public String type;       // "SELECT_TECH" | "INCOMING_DIPLOMACY"
         public int category;      // research category (0-5) for SELECT_TECH, else -1
         public String text;       // human-readable
         // SELECT_TECH: the techs available to research now, so the prompt is
@@ -380,6 +382,20 @@ public final class Messages {
         // arrays; resolve by sending SetResearchChoice{category, chosen id}.
         public String[] choiceIds;
         public String[] choiceNames;
+        // INCOMING_DIPLOMACY: who is offering, and what.
+        public int empireId = -1;         // the empire making the offer
+        public String action;             // TRADE | PEACE | PACT | ALLIANCE
+    }
+
+    /**
+     * client -> server: the human's answer to an INCOMING_DIPLOMACY prompt. empireId is
+     * the offering empire; action matches the prompt (TRADE/PEACE/PACT/ALLIANCE). The
+     * engine applies the human's accept/refuse via that empire's diplomat.
+     */
+    public static class RespondDiplomacy {
+        public int empireId;
+        public String action;
+        public boolean accept;
     }
 
     public static class Notification {

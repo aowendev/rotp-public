@@ -330,10 +330,13 @@ public class ClientMain {
                 else if (msg instanceof Messages.Prompts) {
                     // interactive decisions from the server (Phase 3). SELECT_TECH pops
                     // a chooser for the category that just completed a tech; the pick
-                    // overrides the server's auto-selected default.
+                    // overrides the server's auto-selected default. INCOMING_DIPLOMACY
+                    // pops an accept/decline dialog for an offer another empire made.
                     for (Messages.Prompt p : ((Messages.Prompts) msg).items) {
                         if ("SELECT_TECH".equals(p.type))
                             researchPanel.promptSelectTech(p);
+                        else if ("INCOMING_DIPLOMACY".equals(p.type))
+                            promptIncomingDiplomacy(frame, clientHolder[0], p);
                     }
                 }
                 handleMessage(msg, galaxyPanel, colonyPanel, systemInfoPanel, researchPanel, fleetsPanel, shipDesignPanel, empirePanel, racesPanel, lastView, status, nextTurn);
@@ -418,6 +421,23 @@ public class ClientMain {
         else if (msg instanceof Messages.Error) {
             status.setText("Server error: "+((Messages.Error) msg).text);
         }
+    }
+
+    /**
+     * An INCOMING_DIPLOMACY prompt: another empire is offering a treaty/trade. Pops an
+     * accept/decline dialog and sends the human's answer as a RespondDiplomacy command.
+     * Declining is the safe default (window closed / cancelled).
+     */
+    private static void promptIncomingDiplomacy(JFrame frame, NetClient client, Messages.Prompt p) {
+        String body = (p.text == null ? "Another empire has made you a diplomatic offer." : p.text) + ".";
+        int pick = javax.swing.JOptionPane.showConfirmDialog(frame, body + "\n\nAccept?",
+            "Incoming Diplomacy", javax.swing.JOptionPane.YES_NO_OPTION,
+            javax.swing.JOptionPane.QUESTION_MESSAGE);
+        Messages.RespondDiplomacy rd = new Messages.RespondDiplomacy();
+        rd.empireId = p.empireId;
+        rd.action = p.action;
+        rd.accept = (pick == javax.swing.JOptionPane.YES_OPTION);
+        client.sendMessage(rd);
     }
 
     /** true if the system is one of the player's own colonies (has colony detail in the view) */
