@@ -25,16 +25,19 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import rotp.model.empires.Empire;
+import rotp.model.game.GameSession;
 import rotp.mp.MpTestSupport.Client;
 import rotp.mp.MpTestSupport.Server;
 import rotp.mp.protocol.Messages;
 import rotp.mp.protocol.PlayerView;
 
 /**
- * Internal security, spy networks, and diplomacy. The security and
- * pre-contact validation always run; spy-mission and diplomatic-offer
- * round-trips require first contact with an AI empire, which depends on
- * galaxy geography and is skipped (not failed) if it doesn't happen.
+ * Internal security, spy networks, and diplomacy. First contact with an AI empire is
+ * established deterministically through the in-process engine (the server runs in this
+ * JVM): scouting to contact is geography-dependent (unseeded RNG), slow, and — on the
+ * ~120-turn miss path — could leave the shared engine wedged and cascade-fail every test
+ * ordered after this one. Forcing contact keeps the whole round-trip fast and reliable.
  */
 public class SpyDiplomacyTest {
     private Server server;
@@ -46,8 +49,16 @@ public class SpyDiplomacyTest {
         if (server != null) server.stop();
     }
 
+    /** the first live empire that is not the given one, or null */
+    private static Empire firstForeignEmpire(Empire self) {
+        for (Empire e : GameSession.instance().galaxy().empires())
+            if ((e != self) && !e.extinct())
+                return e;
+        return null;
+    }
+
     @Test
-    @Timeout(300)
+    @Timeout(120)
     void securitySpyAndDiplomacy() throws Exception {
         server = MpTestSupport.startServer(1);
         alice = new Client(server.port, "Alice");
@@ -72,22 +83,18 @@ public class SpyDiplomacyTest {
         offerUnknown.action = "PACT";
         assertFalse(alice.order(offerUnknown).ok, "offer to unknown empire rejected");
 
-        // actively scout outward until we make first contact
-        PlayerView.SystemDto home = MpTestSupport.ownColony(v);
-        java.util.Set<Integer> visited = new java.util.HashSet<>();
-        visited.add(home.id);
-        int otherId = -1;
-        boolean sawContactNote = false;
-        for (int t = 0; t < 120 && otherId < 0; t++) {
-            v = MpTestSupport.explore(alice, v, visited);
-            v = alice.ready();
-            if (MpTestSupport.sawNotification(alice, "CONTACT"))
-                sawContactNote = true;
-            PlayerView.EmpireDto o = MpTestSupport.anyForeignEmpire(v);
-            if (o != null) otherId = o.id;
-        }
-        assumeTrue(otherId >= 0, "no first contact within 120 turns this game; skipping spy/diplomacy round-trips");
-        assertTrue(sawContactNote, "first contact delivered as a CONTACT notification");
+        // establish first contact deterministically through the in-process engine
+        Empire human = GameSession.instance().galaxy().empire(v.empireId);
+        Empire other = firstForeignEmpire(human);
+        assumeTrue(other != null, "no other empire in this game; skipping spy/diplomacy round-trips");
+        human.makeContact(other);
+        other.makeContact(human);
+        int otherId = other.id;
+
+        // the contact still surfaces as a CONTACT notification on the next turn's diff
+        v = alice.ready();
+        assertTrue(MpTestSupport.sawNotification(alice, "CONTACT"),
+            "first contact delivered as a CONTACT notification");
 
         // spy network vs the contacted empire
         Messages.SetSpySpending ss = new Messages.SetSpySpending();

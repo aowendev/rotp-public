@@ -197,17 +197,13 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
   the **galaxy-size picker** (`GalaxySizeTest`: sizes offered, host choice
   overrides the default, invalid size rejected), and the **AI-ability/difficulty
   picker** (`DifficultyTest`: levels offered with AI-strength %, host choice
-  applied, invalid rejected). Note `SpyDiplomacyTest` is
-  geography-dependent (unseeded RNG) and can occasionally error on a scouting
-  timeout rather than skip cleanly — rerun it; seeding the RNG is the real fix.
-  WORSE: when it hits the ~120s scouting-timeout path it can leave the shared
-  in-process engine wedged, so every test ordered after it (StartingFleet,
-  SystemInfoView, TurnAdvance, TurnTimer...) then times out too — a cascade. It's
-  pre-existing (shared static `GameSession` across tests + the long unseeded
-  scouting loop), not tied to any one feature. Workaround: `mvn test
-  -Dtest='!SpyDiplomacyTest'` (72 → 71 tests, reliably green), and run
-  `SpyDiplomacyTest` on its own. Real fix: seed the RNG and/or isolate the engine
-  per test.
+  applied, invalid rejected). `SpyDiplomacyTest` now establishes first contact
+  **deterministically through the in-process engine** (`human.makeContact(other)`)
+  instead of scouting up to 120 turns — it runs in ~3s and is stable. This also
+  removed a nasty cascade: the old ~120s scouting-miss path could leave the shared
+  static `GameSession` wedged, timing out every test ordered after it. If you add
+  another geography-dependent test, prefer forcing the state via the engine over
+  scouting loops for the same reason (the shared engine is not isolated per test).
   Harness: `startServer` waits for the port to listen, then each client connects
   once (a WebSocketClient can't be reconnected — old retry loop was flaky).
 
