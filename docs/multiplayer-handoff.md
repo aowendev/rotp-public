@@ -15,13 +15,15 @@ Empire Overview (planets window); one-decimal ship-range display; and **minimal
 local save/load** (Save Game ⌘S; resume with `load=<name>`). **Phase 2
 is complete** — its two open items (player-color selection and the galaxy-size
 option set) are deferred to the web client, not built in the Java reference client.
-**Phase 3 is now underway: increments 1-2 are in.** (1) Interactive **tech selection** —
+**Phase 3 is now underway: increments 1-3 are in.** (1) Interactive **tech selection** —
 when a research category completes a tech, the server raises a self-contained SELECT_TECH
 prompt and the client pops a chooser. (2) **Incoming diplomacy** — when another empire
-offers a treaty/trade to a remote human, the offer is now deferred (not auto-resolved)
-and delivered as an INCOMING_DIPLOMACY prompt the human accepts/declines (resolved with
-`respondDiplomacy`). Both ride a reusable `Prompts` message. **64 tests green.** See
-"Then — Phase 3"._
+offers a treaty/trade to a remote human, the offer is deferred (not auto-resolved) and
+delivered as an INCOMING_DIPLOMACY prompt the human accepts/declines (`respondDiplomacy`).
+(3) **Council vote** — the Galactic Council now works headlessly (it previously would
+*hang* the server) and, when it is a remote human's turn to vote, raises a COUNCIL_VOTE
+prompt resolved with `castCouncilVote`. All ride a reusable `Prompts` message. **66 tests
+green.** See "Then — Phase 3"._
 
 ## Where we are
 
@@ -40,10 +42,10 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **64 JUnit integration tests, green.**
+projections and per-category locks**. **66 JUnit integration tests, green.**
 
-**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is underway** — increments 1-2
-(interactive tech selection; incoming diplomacy) are in (see "Then — Phase 3"). Built on `7a2cdd95` (Phase 2
+**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is underway** — increments 1-3
+(interactive tech selection; incoming diplomacy; council vote) are in (see "Then — Phase 3"). Built on `7a2cdd95` (Phase 2
 lobby AI-fill); the Races panel, client reconnection, lobby galaxy-size / AI-ability
 pickers, the colony/research/empire upgrades, and minimal save/load are committed on
 top of it across this session.
@@ -279,8 +281,10 @@ All Phase 1.5 backlog items are addressed; a solo game plays start → win/loss 
 the reference client. A human should still do one uninterrupted full playthrough
 to final victory/defeat to sign it off.
 
-Caveat: council votes + incoming AI diplomacy are auto-resolved (Phase 3), so
-"full playthrough" = you can win/lose a game, not every interactive prompt restored.
+Caveat (historical, from Phase 1.5): council votes + incoming AI diplomacy were
+auto-resolved at that time. Both are now interactive (Phase 3 increments 2-3): incoming
+offers and council votes prompt the remote human. Remaining auto-resolved mid-turn prompts
+(colonize choice, combat/spy/GNN events) are the remaining Phase 3 backlog.
 
 ## Then — Phase 2 (LAN & session completeness)
 
@@ -400,9 +404,35 @@ NOTE: outgoing offers to an AI are unaffected (the AI target is `decidedByAI`, s
 answers immediately via `DiploReply`); a human→human offer now correctly defers to the
 other human's prompt.
 
+**Increment 3 — council vote (DONE, 2026-08-08).** Two parts. First, **council was made
+headless-safe**: it previously would *hang the server* — `convene()` →
+`CouncilVoteNotification.create()` → `RotPUI.instance().selectCouncilPanel()` pauses turn
+processing and waits for a UI that never resumes it. Fixed by adding a default no-op
+`selectCouncilPanel()` to the `SessionUI` seam and routing the notification through
+`SessionUI.get()` (RotPUI still drives the vote in single-player; ServerUI no-ops). This
+was a latent hang for any server game that reached council formation. Second, the three
+vote gates in `GalacticCouncil` (`castNextVote`, `castPlayerVote`,
+`continueNonPlayerVoting`) changed from `isPlayerControlled()`/`isPlayer()` to
+`decidedByAI()` — a no-op for single-player — so the vote pauses on a *remote* human
+instead of the AI voting for them. Server: after each turn `GameServer.driveCouncil()`
+casts AI votes up to the next human voter (`continueNonPlayerVoting()` now stops there)
+and, if paused on a connected human, raises a self-contained COUNCIL_VOTE prompt
+(candidates as `choiceIds`/`choiceNames` + "-1" abstain). New `castCouncilVote` command →
+`applyCastCouncilVote` casts the human's pick and resumes AI voting. `finalizePendingCouncilVote()`
+runs *before* each turn resolves: if a human ignored the prompt, it casts their AI-default
+vote so the convention closes rather than re-convening/resetting next turn (a livelock).
+Both drive/finalize guard on `councilVoteOpen()` = `active() && votingInProgress() &&
+totalVotes()>0`; the `totalVotes()>0` check avoids the transient state where
+`votingInProgress()` reads true but the vote arrays aren't initialized (pre-`convene()`,
+or after a **save mid-vote** reloads the transient arrays as null — a real edge case this
+now defends against). Client: `ClientMain.promptCouncilVote` pops a candidate chooser →
+`castCouncilVote`. Tests: `CouncilVoteTest` (a forced convention prompts the human and the
+vote is accepted; an ignored vote is finalized, not left hanging) — the convention is
+forced via reflection since 2/3-colonized is impractical to reach in a bounded test.
+KNOWN GAP: a save taken *while* a council vote is open loses the vote (transient arrays);
+on reload the council re-convenes fresh. Acceptable for now.
+
 **Increment backlog (each: server prompt + client dialog + a `*Test`):**
-- **Council vote** — when the Galactic Council convenes, prompt the human to cast a vote
-  (engine auto-abstains/auto-votes for AI-controlled empires today).
 - **Colonize choice** — offer/deny settling on arrival instead of auto-colonize.
 - **Turn timers** — optional per-turn deadline so an absent human doesn't stall a we-go
   turn (default keeps the server's picks).

@@ -367,6 +367,10 @@ public final class Messages {
      *                        (resolve with setResearchChoice)
      *   INCOMING_DIPLOMACY - another empire is offering a treaty/trade to you
      *                        (resolve with respondDiplomacy)
+     *   COUNCIL_VOTE       - the Galactic Council is electing a leader and it is your
+     *                        turn to vote; choiceIds/choiceNames list the candidates
+     *                        (empire ids as strings) plus "-1" = abstain
+     *                        (resolve with castCouncilVote)
      */
     public static class Prompts {
         public int turn;
@@ -396,6 +400,14 @@ public final class Messages {
         public int empireId;
         public String action;
         public boolean accept;
+    }
+
+    /**
+     * client -> server: the human's vote in response to a COUNCIL_VOTE prompt.
+     * candidateId is the empire voted for, or -1 to abstain.
+     */
+    public static class CastCouncilVote {
+        public int candidateId = -1;
     }
 
     public static class Notification {

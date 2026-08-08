@@ -75,6 +75,7 @@ public final class Protocol {
         register("declareWar",     Messages.DeclareWar.class);
         register("diploReply",     Messages.DiploReply.class);
         register("respondDiplomacy", Messages.RespondDiplomacy.class);
+        register("castCouncilVote", Messages.CastCouncilVote.class);
         register("cmdResult",      Messages.CommandResult.class);
         register("notifications",  Messages.Notifications.class);
         register("prompts",        Messages.Prompts.class);

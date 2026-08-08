@@ -76,9 +76,9 @@ public class GameServer extends WebSocketServer {
     /** serializes all game-state access (commands vs turn processing) */
     private final Object gameLock = new Object();
     private final NotificationCenter notiCenter = new NotificationCenter();
-    /** incoming diplomacy offers deferred this turn, keyed by the offered-to empire id;
-     * built from the engine's turn-notification queue and broadcast as INCOMING_DIPLOMACY prompts */
-    private final Map<Integer, List<Messages.Prompt>> pendingDiploPrompts = new HashMap<>();
+    /** interactive prompts raised during this turn's post-processing (incoming diplomacy,
+     * council votes), keyed by the empire that must respond; broadcast as Prompts */
+    private final Map<Integer, List<Messages.Prompt>> pendingPrompts = new HashMap<>();
     private WebSocket hostConn;   // first player to join; may start the game
     private volatile boolean starting = false;
     private volatile boolean gameStarted = false;
@@ -233,6 +233,8 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "declareWar", (Messages.DeclareWar) msg);
         else if (msg instanceof Messages.RespondDiplomacy)
             handleCommand(conn, "respondDiplomacy", (Messages.RespondDiplomacy) msg);
+        else if (msg instanceof Messages.CastCouncilVote)
+            handleCommand(conn, "castCouncilVote", (Messages.CastCouncilVote) msg);
         else if (msg instanceof Messages.DesignCatalog)
             handleDesignCatalog(conn);
         else if (msg instanceof Messages.PickRace)
@@ -650,6 +652,9 @@ public class GameServer extends WebSocketServer {
             GameSession session = GameSession.instance();
             broadcastTurnStatus("Resolving turn");
             synchronized (gameLock) {
+                // finish any council vote a human left unanswered before advancing, so
+                // the convention closes (using AI defaults) instead of re-convening
+                finalizePendingCouncilVote();
                 session.nextTurn();
                 // nextTurn() spawns the turn thread; wait for it to finish
                 while (session.performingTurn())
@@ -661,7 +666,8 @@ public class GameServer extends WebSocketServer {
                     p.ready = false;
             }
             lowerMaxedColonyEcoToClean();
-            collectIncomingDiplomacy();
+            collectIncomingDiplomacy();   // clears pendingPrompts, then adds diplomacy offers
+            driveCouncil();               // adds any council-vote prompt for a human voter
             broadcastNotifications();
             broadcastViews();
             checkGameOver();
@@ -736,8 +742,10 @@ public class GameServer extends WebSocketServer {
                 err = applyBreakTreaty(emp, (Messages.BreakTreaty) cmd);
             else if (cmd instanceof Messages.DeclareWar)
                 err = applyDeclareWar(emp, (Messages.DeclareWar) cmd);
-            else
+            else if (cmd instanceof Messages.RespondDiplomacy)
                 err = applyRespondDiplomacy(emp, (Messages.RespondDiplomacy) cmd);
+            else
+                err = applyCastCouncilVote(emp, (Messages.CastCouncilVote) cmd);
         }
         send(conn, result(name, err == null, err == null ? "OK" : err));
         // successful orders change computed values (production, research);
@@ -1288,6 +1296,29 @@ public class GameServer extends WebSocketServer {
         }
     }
 
+    /**
+     * The human's vote in an active Galactic Council election. Valid only while voting
+     * is in progress and it is this empire's turn to vote; candidateId must be one of the
+     * two candidates or -1 (abstain). After the human's vote, resume AI voting (which may
+     * close the convention or pause on another human in a multi-human game).
+     */
+    private String applyCastCouncilVote(Empire emp, Messages.CastCouncilVote cmd) {
+        rotp.model.empires.GalacticCouncil c = galaxy().council();
+        if (!councilVoteOpen(c))
+            return "No council vote is in progress";
+        if (c.nextVoter() != emp)
+            return "It is not your turn to vote";
+        Empire chosen = null;
+        if (cmd.candidateId >= 0) {
+            if ((cmd.candidateId != c.candidate1().id) && (cmd.candidateId != c.candidate2().id))
+                return "That empire is not a candidate";
+            chosen = galaxy().empire(cmd.candidateId);
+        }
+        c.castPlayerVote(chosen);      // null = abstain
+        c.continueNonPlayerVoting();   // let the AI voters after us proceed
+        return null;
+    }
+
     private String applyBreakTreaty(Empire emp, Messages.BreakTreaty cmd) {
         EmpireView ev = contactedView(emp, cmd.empireId);
         if (ev == null)
@@ -1411,12 +1442,12 @@ public class GameServer extends WebSocketServer {
                     msg.items = result.notifications;
                     send(e.getKey(), Protocol.encode(msg));
                 }
-                // merge state-diff prompts (e.g. SELECT_TECH) with incoming-diplomacy
-                // prompts deferred from the engine's turn-notification queue this turn
+                // merge state-diff prompts (e.g. SELECT_TECH) with the interactive
+                // prompts raised in post-turn processing (diplomacy offers, council vote)
                 List<Messages.Prompt> prompts = new ArrayList<>(result.prompts);
-                List<Messages.Prompt> diplo = pendingDiploPrompts.get(emp.id);
-                if (diplo != null)
-                    prompts.addAll(diplo);
+                List<Messages.Prompt> pending = pendingPrompts.get(emp.id);
+                if (pending != null)
+                    prompts.addAll(pending);
                 if (!prompts.isEmpty()) {
                     Messages.Prompts msg = new Messages.Prompts();
                     msg.turn = galaxy().currentTurn();
@@ -1436,7 +1467,7 @@ public class GameServer extends WebSocketServer {
      * per-empire event notifications come from {@link NotificationCenter}.
      */
     private void collectIncomingDiplomacy() {
-        pendingDiploPrompts.clear();
+        pendingPrompts.clear();
         SessionUI ui = SessionUI.get();
         if (!(ui instanceof ServerUI))
             return;
@@ -1456,8 +1487,72 @@ public class GameServer extends WebSocketServer {
             p.action = action;
             p.empireId = requestor.id;
             p.text = requestor.name() + " proposes " + diploLabel(action);
-            pendingDiploPrompts.computeIfAbsent(target.id, k -> new ArrayList<>()).add(p);
+            pendingPrompts.computeIfAbsent(target.id, k -> new ArrayList<>()).add(p);
         }
+    }
+
+    /**
+     * Advance the Galactic Council after a turn: cast every AI vote up to the next human
+     * voter (the engine stops at a non-{@code decidedByAI} empire now), and if the vote
+     * pauses on a connected human, raise a COUNCIL_VOTE prompt for them. Casting the last
+     * vote closes the convention automatically. The desktop game does this inside its
+     * council UI; headless we drive it ourselves so the vote never blocks the turn thread.
+     */
+    private void driveCouncil() {
+        synchronized (gameLock) {
+            rotp.model.empires.GalacticCouncil c = galaxy().council();
+            if (!councilVoteOpen(c))
+                return;
+            c.continueNonPlayerVoting();          // cast AI votes up to a human (or the end)
+            if (!c.votingInProgress())
+                return;                           // fully resolved by AI
+            Empire voter = c.nextVoter();         // a human whose turn it is to vote
+            if ((voter == null) || voter.decidedByAI())
+                return;
+            pendingPrompts.computeIfAbsent(voter.id, k -> new ArrayList<>())
+                          .add(councilPrompt(c));
+        }
+    }
+
+    /** a self-contained COUNCIL_VOTE prompt: the two candidates plus an abstain option */
+    private static Messages.Prompt councilPrompt(rotp.model.empires.GalacticCouncil c) {
+        Empire c1 = c.candidate1();
+        Empire c2 = c.candidate2();
+        Messages.Prompt p = new Messages.Prompt();
+        p.type = "COUNCIL_VOTE";
+        p.text = "The Galactic Council is electing a leader — cast your vote";
+        p.choiceIds = new String[]{ String.valueOf(c1.id), String.valueOf(c2.id), "-1" };
+        p.choiceNames = new String[]{ c1.name(), c2.name(), "Abstain" };
+        return p;
+    }
+
+    /**
+     * Cast any still-pending human council votes using each voter's AI default, so an
+     * unanswered prompt does not leave the convention open (which would re-convene and
+     * reset next turn). A no-op once voting has completed. Runs under gameLock.
+     */
+    private void finalizePendingCouncilVote() {
+        rotp.model.empires.GalacticCouncil c = galaxy().council();
+        while (councilVoteOpen(c)) {
+            Empire voter = c.nextVoter();
+            if (voter == null)
+                break;
+            if (voter.decidedByAI())
+                c.continueNonPlayerVoting();
+            else
+                c.castPlayerVote(voter.diplomatAI().councilVoteFor(c.candidate1(), c.candidate2()));
+        }
+    }
+
+    /**
+     * True when a council election is genuinely mid-vote. Guards against the transient
+     * state where {@code votingInProgress()} reads true (voteIndex 0 &lt; voters) but the
+     * per-voter tallies have not been initialized yet ({@code totalVotes()==0}) — as
+     * happens before {@code convene()} opens the convention, or after a mid-vote save
+     * reloads the transient vote arrays as null. Casting in that state would NPE.
+     */
+    private static boolean councilVoteOpen(rotp.model.empires.GalacticCouncil c) {
+        return c.active() && c.votingInProgress() && (c.totalVotes() > 0);
     }
 
     /** map a DialogueManager offer type to our protocol action, or null if not an offer */

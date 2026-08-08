@@ -155,16 +155,16 @@ public class GalacticCouncil implements Base, Serializable {
     public int nextVotes()     { return votes[voteIndex]; }
     public boolean hasLeader() { return leader != null; }
     public void castNextVote() {
-        // will not cast vote for player
-        if (!nextVoter().isPlayerControlled())
+        // will not cast an automatic vote for a human (local or remote); they decide
+        if (nextVoter().decidedByAI())
             castNextVote(nextVoter().diplomatAI().councilVoteFor(candidate1(), candidate2()));
     }
     public void castPlayerVote(Empire chosen) {
-        if (nextVoter().isPlayer())
+        if (!nextVoter().decidedByAI())
             castNextVote(chosen);
     }
     public void continueNonPlayerVoting() {
-        while (votingInProgress() && !nextVoter().isPlayerControlled())
+        while (votingInProgress() && nextVoter().decidedByAI())
             castNextVote();
     }
     public boolean nextVoteWouldElect(Empire emp) {

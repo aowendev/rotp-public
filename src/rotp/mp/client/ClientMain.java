@@ -337,6 +337,8 @@ public class ClientMain {
                             researchPanel.promptSelectTech(p);
                         else if ("INCOMING_DIPLOMACY".equals(p.type))
                             promptIncomingDiplomacy(frame, clientHolder[0], p);
+                        else if ("COUNCIL_VOTE".equals(p.type))
+                            promptCouncilVote(frame, clientHolder[0], p);
                     }
                 }
                 handleMessage(msg, galaxyPanel, colonyPanel, systemInfoPanel, researchPanel, fleetsPanel, shipDesignPanel, empirePanel, racesPanel, lastView, status, nextTurn);
@@ -438,6 +440,32 @@ public class ClientMain {
         rd.action = p.action;
         rd.accept = (pick == javax.swing.JOptionPane.YES_OPTION);
         client.sendMessage(rd);
+    }
+
+    /**
+     * A COUNCIL_VOTE prompt: the Galactic Council is electing a leader and it is this
+     * player's turn to vote. Pops a chooser of the candidates (plus Abstain) and sends
+     * the pick as a CastCouncilVote. Cancelling abstains (the safe default).
+     */
+    private static void promptCouncilVote(JFrame frame, NetClient client, Messages.Prompt p) {
+        if (p.choiceNames == null || p.choiceNames.length == 0)
+            return;
+        String text = (p.text == null) ? "Cast your council vote" : p.text;
+        Object chosen = javax.swing.JOptionPane.showInputDialog(frame, text + ":",
+            "Galactic Council", javax.swing.JOptionPane.QUESTION_MESSAGE,
+            null, p.choiceNames, p.choiceNames[0]);
+        Messages.CastCouncilVote v = new Messages.CastCouncilVote();
+        v.candidateId = -1;   // abstain by default (also if the dialog was cancelled)
+        if (chosen != null) {
+            for (int i = 0; i < p.choiceNames.length; i++) {
+                if (p.choiceNames[i].equals(chosen)) {
+                    try { v.candidateId = Integer.parseInt(p.choiceIds[i]); }
+                    catch (NumberFormatException ignored) { v.candidateId = -1; }
+                    break;
+                }
+            }
+        }
+        client.sendMessage(v);
     }
 
     /** true if the system is one of the player's own colonies (has colony detail in the view) */

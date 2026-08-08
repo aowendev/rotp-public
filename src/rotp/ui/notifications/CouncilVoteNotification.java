@@ -15,17 +15,19 @@
  */
 package rotp.ui.notifications;
 
-import rotp.ui.RotPUI;
+import rotp.model.game.SessionUI;
 
 public class CouncilVoteNotification implements TurnNotification {
     public static void create() {
         (new CouncilVoteNotification()).notifyPlayer();
     }
-    private CouncilVoteNotification() {  }	
+    private CouncilVoteNotification() {  }
     @Override
     public String displayOrder() { return COUNCIL_NOTIFY; }
     @Override
     public void notifyPlayer() {
-        RotPUI.instance().selectCouncilPanel();
+        // routed through the SessionUI seam so the headless server no-ops instead
+        // of hanging the turn thread on a UI that will never resume it
+        SessionUI.get().selectCouncilPanel();
     }
 }

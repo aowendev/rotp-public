@@ -34,6 +34,10 @@ public interface SessionUI {
     default void selectMainPanelLoadGame()            { }
     default void selectGameOverPanel()                { }
     default void allocateSystems()                    { }
+    // the desktop UI drives the interactive council vote here (and pauses turn
+    // processing until it finishes); a headless server no-ops and drives the
+    // vote itself, so turn processing must NOT block on this.
+    default void selectCouncilPanel()                 { }
     default void showDisplayPanel()                   { }
     default void showMemoryLowPrompt()                { }
     default void showAutosaveFailedPrompt(String err) { }
