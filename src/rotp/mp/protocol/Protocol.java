@@ -54,6 +54,7 @@ public final class Protocol {
         register("previewColony",  Messages.PreviewColony.class);
         register("colonyPreview",  Messages.ColonyPreview.class);
         register("setColonyLock",  Messages.SetColonyLock.class);
+        register("setColonyMaxBases", Messages.SetColonyMaxBases.class);
         register("setTechAlloc",   Messages.SetTechAllocations.class);
         register("setTechLock",    Messages.SetTechLock.class);
         register("setResearchChoice", Messages.SetResearchChoice.class);

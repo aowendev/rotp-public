@@ -80,6 +80,10 @@ public class ColonyPanel extends JPanel {
     private final JSpinner buildLimit = new JSpinner(new SpinnerNumberModel(0, 0, 999, 1));
     private final JButton setBuildBtn = new JButton("Set build");
 
+    // target missile-base count: raise to build more, lower to scrap the excess
+    private final JSpinner maxBasesSpinner = new JSpinner(new SpinnerNumberModel(1, 0, 50, 1));
+    private final JButton setBasesBtn = new JButton("Set bases");
+
     private int systemId = -1;
     private boolean[] locked = new boolean[5];
     private List<PlayerView.DesignDto> designs;   // empire designs, for the build dropdown
@@ -153,6 +157,15 @@ public class ColonyPanel extends JPanel {
         limitRow.add(setBuildBtn);
         south.add(limitRow);
         setBuildBtn.addActionListener(e -> sendBuild());
+
+        JPanel basesRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        basesRow.setAlignmentX(LEFT_ALIGNMENT);
+        basesRow.add(new JLabel("Max missile bases:"));
+        basesRow.add(maxBasesSpinner);
+        basesRow.add(setBasesBtn);
+        setBasesBtn.setToolTipText("Target base count — raise to build more, lower to scrap the excess");
+        setBasesBtn.addActionListener(e -> sendMaxBases());
+        south.add(basesRow);
         add(south, BorderLayout.SOUTH);
 
         setEnabledControls(false);
@@ -231,6 +244,7 @@ public class ColonyPanel extends JPanel {
                     break;
                 }
         buildLimit.setValue(col.buildLimit);
+        maxBasesSpinner.setValue(Math.max(0, Math.min(50, col.maxBases)));
     }
 
     private void sendBuild() {
@@ -241,6 +255,15 @@ public class ColonyPanel extends JPanel {
         msg.systemId = systemId;
         msg.designSlot = d.slot;
         msg.buildLimit = (Integer) buildLimit.getValue();
+        orderSender.accept(msg);
+    }
+
+    private void sendMaxBases() {
+        if (systemId < 0)
+            return;
+        Messages.SetColonyMaxBases msg = new Messages.SetColonyMaxBases();
+        msg.systemId = systemId;
+        msg.maxBases = (Integer) maxBasesSpinner.getValue();
         orderSender.accept(msg);
     }
 
@@ -344,6 +367,8 @@ public class ColonyPanel extends JPanel {
         buildCombo.setEnabled(on);
         buildLimit.setEnabled(on);
         setBuildBtn.setEnabled(on && buildCombo.getItemCount() > 0);
+        maxBasesSpinner.setEnabled(on);
+        setBasesBtn.setEnabled(on);
     }
 
     private int[] currentSliderValues() {

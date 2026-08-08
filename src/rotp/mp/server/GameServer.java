@@ -157,6 +157,8 @@ public class GameServer extends WebSocketServer {
             handlePreviewColony(conn, (Messages.PreviewColony) msg);
         else if (msg instanceof Messages.SetColonyLock)
             handleCommand(conn, "setColonyLock", (Messages.SetColonyLock) msg);
+        else if (msg instanceof Messages.SetColonyMaxBases)
+            handleCommand(conn, "setColonyMaxBases", (Messages.SetColonyMaxBases) msg);
         else if (msg instanceof Messages.SetTechAllocations)
             handleCommand(conn, "setTechAlloc", (Messages.SetTechAllocations) msg);
         else if (msg instanceof Messages.SetTechLock)
@@ -618,6 +620,8 @@ public class GameServer extends WebSocketServer {
                 err = applyColonyAllocations(emp, (Messages.SetColonyAllocations) cmd);
             else if (cmd instanceof Messages.SetColonyLock)
                 err = applySetColonyLock(emp, (Messages.SetColonyLock) cmd);
+            else if (cmd instanceof Messages.SetColonyMaxBases)
+                err = applySetColonyMaxBases(emp, (Messages.SetColonyMaxBases) cmd);
             else if (cmd instanceof Messages.SetTechAllocations)
                 err = applyTechAllocations(emp, (Messages.SetTechAllocations) cmd);
             else if (cmd instanceof Messages.SetTechLock)
@@ -719,6 +723,19 @@ public class GameServer extends WebSocketServer {
                 }
             }
         }
+    }
+
+    private String applySetColonyMaxBases(Empire emp, Messages.SetColonyMaxBases cmd) {
+        StarSystem sys = galaxy().system(cmd.systemId);
+        if (sys == null)
+            return "No such system";
+        if ((sys.empire() != emp) || !sys.isColonized())
+            return "Not your colony";
+        if (cmd.maxBases < 0)
+            return "Max bases must be >= 0";
+        // the engine builds up to this target, and scraps the excess when lowered
+        sys.colony().defense().maxBases(cmd.maxBases);
+        return null;
     }
 
     private String applySetColonyLock(Empire emp, Messages.SetColonyLock cmd) {

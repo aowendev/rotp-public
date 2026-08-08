@@ -114,6 +114,7 @@ public final class PlayerView {
         public String notes;          // status notes (rebellion, quarantine/plague, space monster, ...)
         public float factories;
         public float bases;
+        public int maxBases;          // target missile-base count (defense builds up to this)
         public float production;      // BC produced this turn
         public String shipyardDesign;
         public int buildLimit;        // 0 = no limit

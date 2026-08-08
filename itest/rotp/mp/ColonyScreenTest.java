@@ -315,6 +315,42 @@ public class ColonyScreenTest {
         finally { alice.close(); server.stop(); }
     }
 
+    @Test
+    @Timeout(120)
+    void settingMaxBasesIsAppliedAndReflected() throws Exception {
+        Server server = MpTestSupport.startServer(1);
+        Client alice = new Client(server.port, "Alice");
+        try {
+            PlayerView v = alice.awaitView();
+            PlayerView.SystemDto home = MpTestSupport.ownColony(v);
+
+            rotp.mp.protocol.Messages.SetColonyMaxBases mb =
+                new rotp.mp.protocol.Messages.SetColonyMaxBases();
+            mb.systemId = home.id; mb.maxBases = 5;                 // raise the target
+            assertTrue(alice.order(mb).ok, "raising max bases is accepted");
+            assertEquals(5, MpTestSupport.system(alice.lastView, home.id).colony.maxBases,
+                "the new max-bases target is reflected in the view");
+
+            mb.maxBases = 0;                                        // lower to zero (scrap all)
+            assertTrue(alice.order(mb).ok, "lowering max bases is accepted");
+            assertEquals(0, MpTestSupport.system(alice.lastView, home.id).colony.maxBases,
+                "max bases lowered to zero");
+
+            rotp.mp.protocol.Messages.SetColonyMaxBases bad =
+                new rotp.mp.protocol.Messages.SetColonyMaxBases();
+            bad.systemId = home.id; bad.maxBases = -1;
+            assertFalse(alice.order(bad).ok, "a negative max-bases is rejected");
+            rotp.mp.protocol.Messages.SetColonyMaxBases notMine =
+                new rotp.mp.protocol.Messages.SetColonyMaxBases();
+            notMine.systemId = 99999; notMine.maxBases = 3;
+            assertFalse(alice.order(notMine).ok, "setting max bases on a non-owned system is rejected");
+        }
+        finally {
+            alice.close();
+            server.stop();
+        }
+    }
+
     private static PlayerView viewWithColony(int sysId, int[] alloc) {
         PlayerView v = new PlayerView();
         v.empireId = 0;

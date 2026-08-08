@@ -127,6 +127,7 @@ public final class PlayerViews {
         }
         c.result = colonyResults(col);
         c.population = col.population();
+        c.maxBases = col.defense().maxBases();
         c.maxSize = col.maxSize();
         c.planetSize = col.planet().currentSize();
         c.waste = col.ecology().waste();

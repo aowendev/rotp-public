@@ -181,6 +181,16 @@ public final class Messages {
     }
 
     /**
+     * set a colony's target number of missile bases. Defense spending builds up to
+     * this; setting it below the current count scraps the excess (refunding BC to
+     * the reserve). Reflected back in ColonyDto.maxBases.
+     */
+    public static class SetColonyMaxBases {
+        public int systemId;
+        public int maxBases;
+    }
+
+    /**
      * lock or unlock one research category, so redistribution leaves it untouched.
      * Reflected back in TechDto.locked.
      */
