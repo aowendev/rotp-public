@@ -82,6 +82,8 @@ public class GameServer extends WebSocketServer {
     private final Map<Integer, List<Messages.Prompt>> pendingPrompts = new HashMap<>();
     /** public galactic news (GNN) from this turn, broadcast to every client as NEWS notifications */
     private final List<Messages.Notification> pendingPublicNews = new ArrayList<>();
+    /** combat/spy GameAlerts from this turn, delivered to the human (empire 0) as ALERT notifications */
+    private final List<Messages.Notification> pendingAlerts = new ArrayList<>();
     private WebSocket hostConn;   // first player to join; may start the game
     private volatile boolean starting = false;
     private volatile boolean gameStarted = false;
@@ -1521,10 +1523,13 @@ public class GameServer extends WebSocketServer {
                 synchronized (gameLock) {
                     result = notiCenter.update(emp);
                 }
-                // this empire's own events (colony/tech/contact/diplomacy) plus the
-                // public galactic news (GNN) that every client sees this turn
+                // this empire's own events (colony/tech/contact/diplomacy), the public
+                // galactic news (GNN) every client sees, and — for empire 0, the human
+                // the engine frames alerts for — this turn's combat/spy alerts
                 List<Messages.Notification> items = new ArrayList<>(result.notifications);
                 items.addAll(pendingPublicNews);
+                if (emp.id == rotp.model.empires.Empire.PLAYER_ID)
+                    items.addAll(pendingAlerts);
                 if (!items.isEmpty()) {
                     Messages.Notifications msg = new Messages.Notifications();
                     msg.turn = galaxy().currentTurn();
@@ -1559,16 +1564,36 @@ public class GameServer extends WebSocketServer {
     private void collectPostTurnPrompts() {
         pendingPrompts.clear();
         pendingPublicNews.clear();
+        pendingAlerts.clear();
         SessionUI ui = SessionUI.get();
-        if (!(ui instanceof ServerUI))
-            return;
-        for (TurnNotification tn : ((ServerUI) ui).drainNotifications()) {
-            if (tn instanceof DiplomaticNotification)
-                collectDiplomacyPrompt((DiplomaticNotification) tn);
-            else if (tn instanceof ColonizeSystemNotification)
-                collectColonizePrompt((ColonizeSystemNotification) tn);
-            else if (tn instanceof rotp.ui.notifications.PublicNews)
-                collectPublicNews((rotp.ui.notifications.PublicNews) tn);
+        if (ui instanceof ServerUI) {
+            for (TurnNotification tn : ((ServerUI) ui).drainNotifications()) {
+                if (tn instanceof DiplomaticNotification)
+                    collectDiplomacyPrompt((DiplomaticNotification) tn);
+                else if (tn instanceof ColonizeSystemNotification)
+                    collectColonizePrompt((ColonizeSystemNotification) tn);
+                else if (tn instanceof rotp.ui.notifications.PublicNews)
+                    collectPublicNews((rotp.ui.notifications.PublicNews) tn);
+            }
+        }
+        collectCombatSpyAlerts();
+    }
+
+    /**
+     * The engine's combat/spy {@link rotp.ui.notifications.GameAlert}s (transports killed,
+     * bases/factories sabotaged, tech stolen, spy report, ...) generated this turn. They
+     * are composed from the local player's (empire 0's) fog-of-war and only fire for
+     * empire 0's events (their creation gates now read {@code isPlayer()}), so they are
+     * delivered to empire 0's client as ALERT notifications. v1 caveat: only empire 0
+     * receives combat/spy alerts; per-empire routing for multi-human games is future work.
+     */
+    private void collectCombatSpyAlerts() {
+        for (rotp.ui.notifications.GameAlert a : GameSession.instance().alerts()) {
+            String text;
+            try { text = a.description(); }
+            catch (RuntimeException ex) { continue; }   // skip any alert that can't render headless
+            if ((text != null) && !text.trim().isEmpty())
+                pendingAlerts.add(note("ALERT", text.trim(), -1, -1));
         }
     }
 

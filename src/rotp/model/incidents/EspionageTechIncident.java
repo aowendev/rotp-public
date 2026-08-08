@@ -61,7 +61,7 @@ public class EspionageTechIncident extends DiplomaticIncident {
     }
     public void frameEmpire(Empire e) {
         empThief = e.id;
-        if (galaxy().empire(empVictim).isPlayerControlled())
+        if (galaxy().empire(empVictim).isPlayer())   // multiplayer: empire 0 = human; no-op for single-player
             TechStolenAlert.create(empThief, techId);
     }
     @Override

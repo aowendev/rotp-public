@@ -37,7 +37,7 @@ public class SabotageBasesIncident extends DiplomaticIncident {
             otherView.embassy().resetAllianceTimer();
             otherView.embassy().resetPactTimer();
             Empire victim = otherView.owner();
-            if (victim.isPlayerControlled()
+            if (victim.isPlayer()   // multiplayer: empire 0 = human; no-op for single-player
             && (m.missileBasesDestroyed() > 0)) {
                 StarSystem sys = m.starSystem();
                 BasesDestroyedAlert.create(null, m.missileBasesDestroyed(), sys);
@@ -57,7 +57,7 @@ public class SabotageBasesIncident extends DiplomaticIncident {
         destroyed = m.missileBasesDestroyed();
         severity = max(-30, (-2 * destroyed) + ev.embassy().currentSpyIncidentSeverity());
         
-        if (ev.owner().isPlayerControlled()
+        if (ev.owner().isPlayer()   // multiplayer: empire 0 = human; no-op for single-player
         && (destroyed > 0)) {
             StarSystem sys = m.starSystem();
             BasesDestroyedAlert.create(ev.empire(), destroyed, sys);

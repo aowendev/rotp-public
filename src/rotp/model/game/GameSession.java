@@ -146,6 +146,8 @@ public final class GameSession implements Base, Serializable {
     }
     public int viewedAlerts()    { return viewedAlerts; }
     public int numAlerts()       { return alerts.size(); }
+    /** read-only snapshot of this turn's alerts (multiplayer server routes these to the human) */
+    public List<GameAlert> alerts()  { return new ArrayList<>(alerts); }
     public void addAlert(GameAlert a)  { alerts.add(a); }
     private void clearAlerts() {
         alerts.clear();

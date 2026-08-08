@@ -29,8 +29,11 @@ resolved with the existing `colonize` command (or ignored to leave the ship in o
 `setTurnTimer`, off by default) auto-resolves a we-go turn so an absent human can't stall
 it; `TurnStatus.secondsRemaining` drives a client countdown. (6) **Public news (GNN)** —
 galactic-news turn-notifications (random events, genocides, alliances, council, ...) are
-now broadcast to every client as NEWS notifications instead of being dropped. Prompts
-(1-4) ride a reusable `Prompts` message. **72 tests green.** See "Then — Phase 3"._
+broadcast to every client as NEWS notifications instead of being dropped. (7) **Combat /
+spy alerts** — the engine's per-turn `GameAlert`s (transports killed/perished, bases /
+factories sabotaged, tech stolen, spy report, ...) are delivered to the human (empire 0)
+as ALERT notifications. Prompts (1-4) ride a reusable `Prompts` message. **73 tests
+green.** See "Then — Phase 3"._
 
 ## Where we are
 
@@ -49,11 +52,11 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **72 JUnit integration tests, green.**
+projections and per-category locks**. **73 JUnit integration tests, green.**
 
-**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is underway** — increments 1-6
+**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is underway** — increments 1-7
 (interactive tech selection; incoming diplomacy; council vote; colonize choice; turn
-timers; public GNN news) are in (see "Then — Phase 3"). Built on `7a2cdd95` (Phase 2
+timers; public GNN news; combat/spy alerts) are in (see "Then — Phase 3"). Built on `7a2cdd95` (Phase 2
 lobby AI-fill); the Races panel, client reconnection, lobby galaxy-size / AI-ability
 pickers, the colony/research/empire upgrades, and minimal save/load are committed on
 top of it across this session.
@@ -493,11 +496,27 @@ a separate subsystem** (`GameAlert` in `GameSession.alerts`, exposing only
 `description()`, with no per-empire target accessor and a player-POV lifecycle) — routing
 those per-empire needs target accessors added across ~10 alert classes and is deferred.
 
+**Increment 7 — combat/spy alerts (DONE, 2026-08-09).** The engine's per-turn
+`GameAlert`s are now delivered to the human. They were gated on `isPlayerControlled()` at
+their creation sites (Colony transports, Transport perish/capture, Sabotage bases/factories
+incidents, Espionage tech-steal, Trespassing) — never true on the autoplay server — so
+none fired. The gates now read `isPlayer()` (empire 0): a no-op for real single-player
+(the human *is* empire 0), and on the server it makes empire-0's events generate their
+(already empire-0-framed) alerts. `SpyReportAlert` already used `isPlayer()` via
+`SpyNetwork`. Server: `GameSession.alerts()` accessor added; `GameServer.collectCombatSpyAlerts()`
+(run from `collectPostTurnPrompts`) reads them, and `broadcastNotifications` delivers them
+(category `ALERT`) **to empire 0's client only** (they're framed by `player()` = empire 0).
+Client: ALERT flows through the existing Notifications handler. Test: `CombatSpyAlertTest`
+sends empire-0 transports to an uncolonized system where they perish (a deterministic
+`TransportsPerishedAlert`) and asserts the client receives an ALERT. v1 CAVEATS: only
+empire 0 receives combat/spy alerts (multi-human per-empire routing needs recipient
+accessors on the ~10 alert classes + `description()` re-framing away from `player()`); GNN
+**ranking** bulletins are still not carried (need empire-list formatting).
+
 **Increment backlog (each: server prompt/notification + client handling + a `*Test`):**
-- **Combat / spy alerts (`GameAlert`)** — the remaining notification work; add per-empire
-  target accessors to the alert classes and route them to the affected empire (private),
-  broadcasting the genuinely-public ones. Plus GNN **ranking** bulletins (need empire-list
-  formatting).
+- **Multi-human alert routing + GNN ranking** — route combat/spy alerts to the affected
+  empire (not just empire 0) by adding recipient accessors to the alert classes and
+  re-framing `description()`; carry GNN ranking bulletins.
 - **Turn timer as a lobby pick** — expose `setTurnTimer` as a host lobby control (like
   galaxy size / AI ability) instead of only a server arg.
 - **Async player-to-player diplomacy** — today a human→human offer already defers to the

@@ -37,7 +37,7 @@ public class SabotageFactoriesIncident extends DiplomaticIncident {
         // no incident if spy not caught
         if (!m.spy().caught()) {
             Empire victim = otherView.owner();
-            if (victim.isPlayerControlled()
+            if (victim.isPlayer()   // multiplayer: empire 0 = human; no-op for single-player
             && (m.factoriesDestroyed() > 0)) {
                 StarSystem sys = m.starSystem();
                 FactoriesDestroyedAlert.create(null, m.factoriesDestroyed(), sys);
@@ -58,7 +58,7 @@ public class SabotageFactoriesIncident extends DiplomaticIncident {
         destroyed = m.factoriesDestroyed();
         severity = max(-20,(-1*destroyed)+ev.embassy().currentSpyIncidentSeverity());
 
-        if (ev.owner().isPlayerControlled()
+        if (ev.owner().isPlayer()   // multiplayer: empire 0 = human; no-op for single-player
         && (destroyed > 0)) {
             StarSystem sys = m.starSystem();
             FactoriesDestroyedAlert.create(ev.empire(), destroyed, sys);
