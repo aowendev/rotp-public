@@ -14,6 +14,35 @@ Status: **confirmed** = both sides verified (ROTP in code, MOO1 in the guide or 
 in-code OSG citation); **pending guide** = ROTP side verified in code, MOO1 side
 still needs a value from the guide.
 
+## Which "MOO1"? — three references, and the Mac port wins for us
+
+"MOO1" is not one thing. There are three reference points, and they can disagree:
+
+1. **DOS game (1993)** — the shipped code's *actual behavior*. ROTP's comment at
+   `Empire.java:1075` ("in the OSG, which was never implemented in actual MOO1 code
+   anyway") means the **DOS** game here.
+2. **Official Strategy Guide (OSG)** — written *for* the DOS version, but it
+   demonstrably documents rules the DOS game didn't implement.
+3. **Mac port (1995)** — a *separate* implementation. **Hypothesis:** if the Mac
+   port was written *from the guide* rather than ported from the DOS source, it may
+   match the OSG exactly where DOS diverged. Unverified, but plausible.
+
+**This project targets the Mac port's feel** (that's what `mac-ux-spec.md` is —
+captured from the 1995 Mac release in an emulator). So **where the three disagree,
+the Mac version is our authoritative reference**, not DOS — and if the hypothesis
+holds, the OSG becomes *more* trustworthy for us, not less.
+
+Practical consequence: DOS-vs-OSG conflicts can be settled **empirically**, because
+the Mac version runs in the same emulator used to build the UX spec. Strongest
+evidence chain: **OSG formula → confirm against Mac-in-emulator → diff vs ROTP code.**
+When a row's MOO1 value is guide-only (not yet checked against the Mac port), say so;
+when it's confirmed against the Mac port, mark it — that's the gold standard here.
+
+> Note on ROTP's stance: ROTP generally targets the **DOS** behavior/OSG, not the
+> Mac port. So a ROTP↔OSG match doesn't guarantee a ROTP↔Mac match, and a case where
+> "ROTP followed the OSG but DOS didn't" may actually be ROTP *agreeing with the Mac
+> port* — exactly the cases this project cares about most.
+
 > **Handy:** ROTP's own source cites the OSG in several spots — mine these first when
 > filling in the MOO1 column:
 > - `MOO1GameOptions.numberStarSystems()` — "MOO Strategy Guide, Table 3-2, p.50" (galaxy star counts)
@@ -24,9 +53,10 @@ still needs a value from the guide.
 > - `Empire.java:1075` — a rule "in the OSG (which was never implemented in actual MOO1 code anyway)"
 >
 > That last one flags a deliberate ROTP philosophy: **it sometimes implements the
-> OSG's *documented* rules even where the shipped 1993 game did something different
-> (or buggy).** So "MOO1" can mean two things — *the guide* vs *the actual game* —
-> and ROTP occasionally picks the guide. Note which one a divergence is against.
+> OSG's *documented* rules even where the shipped 1993 DOS game did something
+> different (or buggy).** See "Which MOO1?" above — those OSG-over-DOS cases are the
+> ones most likely to also match the **Mac port**, which is what this project
+> actually targets. Always note which reference (DOS / OSG / Mac) a row is measured against.
 
 ---
 
