@@ -137,6 +137,7 @@ public final class MpTestSupport {
         public final BlockingQueue<Messages.ColonyPreview> colonyPreviews = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.Error> errors = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.Notifications> notifications = new LinkedBlockingQueue<>();
+        public final BlockingQueue<Messages.Prompts> prompts = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.GameOver> gameOvers = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.TurnStatus> turnStatuses = new LinkedBlockingQueue<>();
 
@@ -165,6 +166,7 @@ public final class MpTestSupport {
                     else if (msg instanceof Messages.DifficultyOptions) difficultyOptions.offer((Messages.DifficultyOptions) msg);
                     else if (msg instanceof Messages.ColonyPreview) colonyPreviews.offer((Messages.ColonyPreview) msg);
                     else if (msg instanceof Messages.Notifications) notifications.offer((Messages.Notifications) msg);
+                    else if (msg instanceof Messages.Prompts) prompts.offer((Messages.Prompts) msg);
                     else if (msg instanceof Messages.GameOver) gameOvers.offer((Messages.GameOver) msg);
                     else if (msg instanceof Messages.TurnStatus) turnStatuses.offer((Messages.TurnStatus) msg);
                     else if (msg instanceof Messages.Error) errors.offer((Messages.Error) msg);
@@ -324,5 +326,14 @@ public final class MpTestSupport {
                 if (category.equals(n.category))
                     return true;
         return false;
+    }
+
+    /** the first drained Prompt of the given type, or null if none has arrived */
+    public static Messages.Prompt firstPrompt(Client c, String type) {
+        for (Messages.Prompts ps : drain(c.prompts))
+            for (Messages.Prompt p : ps.items)
+                if (type.equals(p.type))
+                    return p;
+        return null;
     }
 }

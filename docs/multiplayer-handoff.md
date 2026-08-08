@@ -12,10 +12,14 @@ session-completeness batch landed live: Races/diplomacy panel (⌘R) with spy co
 pickers; colony live projections + per-category locks + eco-at-max + richer readout +
 max-bases; research progress % + tech-completion alert + research locks; a richer
 Empire Overview (planets window); one-decimal ship-range display; and **minimal
-local save/load** (Save Game ⌘S; resume with `load=<name>`). **61 tests green. Phase 2
-is now complete** — its two open items (player-color selection and the galaxy-size
+local save/load** (Save Game ⌘S; resume with `load=<name>`). **Phase 2
+is complete** — its two open items (player-color selection and the galaxy-size
 option set) are deferred to the web client, not built in the Java reference client.
-Next: **Phase 3** (interactive mid-turn prompts). See "Then — Phase 2"._
+**Phase 3 is now underway: increment 1 (interactive tech selection) is in.** When a
+research category completes a tech, the server raises a **self-contained SELECT_TECH
+prompt** (a new `Prompts` message carrying the category's available techs); the client
+pops a chooser and the pick overrides the server's auto-selected default. **62 tests
+green.** See "Then — Phase 3"._
 
 ## Where we are
 
@@ -34,12 +38,13 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **61 JUnit integration tests, green.**
+projections and per-category locks**. **62 JUnit integration tests, green.**
 
-**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 (interactive prompts) is
-next.** Built on `7a2cdd95` (Phase 2 lobby AI-fill); the Races panel, client
-reconnection, lobby galaxy-size / AI-ability pickers, the colony/research/empire
-upgrades, and minimal save/load are committed on top of it across this session.
+**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is underway** — increment 1,
+interactive tech selection, is in (see "Then — Phase 3"). Built on `7a2cdd95` (Phase 2
+lobby AI-fill); the Races panel, client reconnection, lobby galaxy-size / AI-ability
+pickers, the colony/research/empire upgrades, and minimal save/load are committed on
+top of it across this session.
 
 ## Run it
 
@@ -350,6 +355,49 @@ to the web client (Phase 5), not built in the Java reference client:**
 Next up: **Phase 3** (interactive mid-turn prompts with turn timers — incoming
 diplomacy, tech/council selection; async player-to-player diplomacy) and eventually
 Phase 4 (internet hosting) / Phase 5 (browser client). See design doc §7.
+
+## Then — Phase 3 (interactive mid-turn prompts) — UNDERWAY
+
+The seam: a new **`Prompts`** message (`{turn, items:[Prompt]}`, registered `"prompts"`)
+carries interactive decisions from server to client, alongside the passive
+`Notifications` stream. A `Prompt` has a `type`, and is **self-contained** — it carries
+everything the client needs to decide, so it does *not* depend on view/notification send
+order (the SpyDiplomacyTest regression proved that dependence is fragile). Prompts are
+**advisory**: on the headless server every empire is AI-controlled, so `AIScientist`
+already auto-picks a default (research never stalls); an ignored prompt just leaves that
+default in place. This is why we did **not** touch the engine's global `TurnNotification`
+queue.
+
+**Increment 1 — interactive tech selection (DONE, 2026-08-08).** When
+`NotificationCenter.diff` sees a newly-known tech, it emits a `SELECT_TECH` prompt for
+that tech's category (`Tech.cat.index()`), deduped per category, only if the category
+still `hasResearchChoices`. The prompt carries `choiceIds`/`choiceNames` (from
+`cat.techIdsAvailableForResearch()`). `update()` now returns a `Result{notifications,
+prompts}`; `GameServer.broadcastNotifications` sends both. Client: `ClientMain` routes
+`Prompts` → `ResearchPanel.promptSelectTech(prompt)`, which pops a chooser and sends the
+existing `SetResearchChoice` (no new resolve message). Test:
+`ResearchScreenTest.completingResearchRaisesAnInteractiveSelectTechPrompt`
+(+ `MpTestSupport.Client.prompts` queue and `firstPrompt` helper).
+
+**Increment backlog (each: server prompt + client dialog + a `*Test`):**
+- **Incoming diplomacy** — an AI/human offer (trade/pact/alliance/peace) arrives as a
+  prompt the human accepts/rejects, instead of today's fire-and-forget `DiploReply`.
+- **Council vote** — when the Galactic Council convenes, prompt the human to cast a vote
+  (engine auto-abstains/auto-votes for AI-controlled empires today).
+- **Colonize choice** — offer/deny settling on arrival instead of auto-colonize.
+- **Turn timers** — optional per-turn deadline so an absent human doesn't stall a we-go
+  turn (default keeps the server's picks).
+
+**GNN alerts are NOT scoped today** (asked 2026-08-08). In the base engine GNN news is
+posted to the single global `GameSession` turn-notification queue and rendered from the
+one local player's POV (`RotPUI`) — not per-empire fog-of-war. Most GNN content is
+genuinely *public/galactic* (rankings, genocides, alliances formed/broken, council,
+random galactic events), so "scoping" it for MP mainly means **broadcasting to every
+client**, with a few naturally-private items (e.g. your own colony's rebellion) routed
+only to the affected empire. On our headless server these `addTurnNotification` calls
+still fire but are auto-drained, so **clients currently receive no GNN events at all**.
+Wiring GNN (and combat/spy) events into the per-empire `NotificationCenter`/`Prompts`
+path — tagging each public vs. private — is a Phase-3 item, not yet built.
 
 Deferred Phase-1 polish (pick up any time): per-design partial fleet deploys
 (`deployFleet.counts[]` — surface per-design count spinners on a selected fleet);

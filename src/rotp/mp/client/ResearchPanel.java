@@ -189,6 +189,40 @@ public class ResearchPanel extends JPanel {
         selectChoice(combo, currentId);
     }
 
+    /**
+     * Present an interactive SELECT_TECH prompt for a category that just completed a
+     * tech (Phase 3). The choices are carried by the prompt itself, so it does not
+     * depend on the panel's current view; the player's pick is sent as a
+     * SetResearchChoice, overriding the server's auto-selected default. Cancelling
+     * (or an empty choice list) leaves that default in place.
+     */
+    public void promptSelectTech(Messages.Prompt prompt) {
+        int category = prompt.category;
+        if (category < 0 || category >= CATEGORY.length)
+            return;
+        if (prompt.choiceIds == null || prompt.choiceIds.length == 0)
+            return;   // nothing to choose (e.g. category exhausted)
+        ChoiceItem[] arr = new ChoiceItem[prompt.choiceIds.length];
+        for (int i = 0; i < arr.length; i++) {
+            String name = (prompt.choiceNames != null && i < prompt.choiceNames.length)
+                ? prompt.choiceNames[i] : prompt.choiceIds[i];
+            arr[i] = new ChoiceItem(prompt.choiceIds[i], name);
+        }
+        String text = (prompt.text == null) ? "Choose your next " + CATEGORY[category] + " research" : prompt.text;
+        Object chosen = javax.swing.JOptionPane.showInputDialog(
+            javax.swing.SwingUtilities.getWindowAncestor(this),
+            text + ":", "Select Research",
+            javax.swing.JOptionPane.QUESTION_MESSAGE, null, arr, arr[0]);
+        if (chosen == null)
+            return;   // cancelled -> keep the server's default pick
+        ChoiceItem pick = (ChoiceItem) chosen;
+        selectChoice(choiceCombos[category], pick.id);   // reflect the pick in the panel's dropdown, if present
+        Messages.SetResearchChoice msg = new Messages.SetResearchChoice();
+        msg.category = category;
+        msg.techId = pick.id;
+        orderSender.accept(msg);
+    }
+
     private void onChoiceChanged(int idx) {
         if (adjusting)
             return;

@@ -97,6 +97,45 @@ public class ResearchScreenTest {
     }
 
     @Test
+    @Timeout(180)
+    void completingResearchRaisesAnInteractiveSelectTechPrompt() throws Exception {
+        server = MpTestSupport.startServer(1);
+        alice = new Client(server.port, "Alice");
+        PlayerView v = alice.awaitView();
+        PlayerView.SystemDto home = MpTestSupport.ownColony(v);
+
+        // fund research heavily, concentrated into Computers (category 0), so that
+        // category completes a tech and the server raises a SELECT_TECH prompt
+        Messages.SetColonyAllocations ca = new Messages.SetColonyAllocations();
+        ca.systemId = home.id;
+        ca.alloc = new int[]{0, 0, 5, 15, 30};
+        assertTrue(alice.order(ca).ok, "set heavy research spending");
+        Messages.SetTechAllocations ta = new Messages.SetTechAllocations();
+        ta.alloc = new int[]{60, 0, 0, 0, 0, 0};   // all into Computers
+        assertTrue(alice.order(ta).ok, "concentrate research into Computers");
+
+        Messages.Prompt prompt = null;
+        for (int t = 0; t < 60 && prompt == null; t++) {
+            alice.ready();
+            prompt = MpTestSupport.firstPrompt(alice, "SELECT_TECH");
+        }
+        assertNotNull(prompt, "completing a tech raises a SELECT_TECH prompt");
+        assertEquals(0, prompt.category,
+            "the prompt targets the category (Computers) that completed the tech");
+        assertNotNull(prompt.text, "the prompt carries human-readable text");
+        assertNotNull(prompt.choiceIds, "the prompt is self-contained: it carries the tech choices");
+        assertTrue(prompt.choiceIds.length > 0, "at least one tech is offered to research next");
+
+        // and the player can resolve the prompt with one of its own offered choices
+        Messages.SetResearchChoice rc = new Messages.SetResearchChoice();
+        rc.category = prompt.category;
+        rc.techId = prompt.choiceIds[0];
+        assertTrue(alice.order(rc).ok, "resolving the prompt with an offered tech is accepted");
+        assertEquals(prompt.choiceIds[0], alice.lastView.tech.researchingId[prompt.category],
+            "the prompt's chosen tech becomes the category's research target");
+    }
+
+    @Test
     @Timeout(120)
     void playerCanChooseWhatToResearch() throws Exception {
         server = MpTestSupport.startServer(1);

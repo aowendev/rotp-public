@@ -46,18 +46,36 @@ import rotp.mp.protocol.Messages;
 public class NotificationCenter {
     private final Map<Integer, Snapshot> snapshots = new HashMap<>();
 
+    /**
+     * The outcome of diffing an empire across a turn: passive {@link Messages.Notification}s
+     * ("what happened") plus interactive {@link Messages.Prompt}s ("a decision awaits you").
+     * Prompts are advisory — the server has already applied its AI default (research never
+     * stalls), so an ignored prompt simply leaves that default in place.
+     */
+    public static final class Result {
+        public final List<Messages.Notification> notifications;
+        public final List<Messages.Prompt> prompts;
+        Result(List<Messages.Notification> notifications, List<Messages.Prompt> prompts) {
+            this.notifications = notifications;
+            this.prompts = prompts;
+        }
+        static Result empty() {
+            return new Result(new ArrayList<>(), new ArrayList<>());
+        }
+    }
+
     /** record an empire's baseline without emitting anything (e.g. at game start) */
     public void seed(Empire emp) {
         snapshots.put(emp.id, capture(emp));
     }
 
-    /** diff an empire against its last snapshot, emit notifications, and re-baseline */
-    public List<Messages.Notification> update(Empire emp) {
+    /** diff an empire against its last snapshot, emit notifications + prompts, and re-baseline */
+    public Result update(Empire emp) {
         Snapshot prev = snapshots.get(emp.id);
         Snapshot cur = capture(emp);
         snapshots.put(emp.id, cur);
         if (prev == null)
-            return new ArrayList<>();
+            return Result.empty();
         return diff(prev, cur, emp);
     }
 
@@ -79,8 +97,9 @@ public class NotificationCenter {
         return s;
     }
 
-    private List<Messages.Notification> diff(Snapshot prev, Snapshot cur, Empire emp) {
+    private Result diff(Snapshot prev, Snapshot cur, Empire emp) {
         List<Messages.Notification> out = new ArrayList<>();
+        List<Messages.Prompt> prompts = new ArrayList<>();
 
         // colonies gained / lost
         for (int sysId : cur.ownedSystems)
@@ -90,10 +109,19 @@ public class NotificationCenter {
             if (!cur.ownedSystems.contains(sysId))
                 out.add(note("COLONY_LOST", "Lost colony at " + sysName(emp, sysId), sysId, -1));
 
-        // technologies researched since last turn
-        for (String techId : cur.knownTechs)
-            if (!prev.knownTechs.contains(techId))
-                out.add(note("TECH", "Researched " + techName(techId), -1, -1));
+        // technologies researched since last turn. Each completed tech frees its
+        // category to pick a new target, so raise a SELECT_TECH prompt (one per
+        // category) inviting the human to choose — the server has already applied
+        // the AI's default pick, so ignoring the prompt is harmless.
+        Set<Integer> promptedCats = new HashSet<>();
+        for (String techId : cur.knownTechs) {
+            if (prev.knownTechs.contains(techId))
+                continue;
+            out.add(note("TECH", "Researched " + techName(techId), -1, -1));
+            int catIndex = categoryOf(techId);
+            if (catIndex >= 0 && promptedCats.add(catIndex) && hasResearchChoices(emp, catIndex))
+                prompts.add(selectTech(emp, catIndex));
+        }
 
         // first contact
         for (int empId : cur.contacted)
@@ -121,7 +149,46 @@ public class NotificationCenter {
             else if (was.pact && !now.pact)
                 out.add(note("DIPLOMACY", "Non-aggression pact with " + name + " has ended", -1, empId));
         }
-        return out;
+        return new Result(out, prompts);
+    }
+
+    /** the research category (0-5) a tech belongs to, or -1 if unknown */
+    private static int categoryOf(String techId) {
+        rotp.model.tech.Tech t = rotp.model.tech.TechLibrary.current().tech(techId);
+        return (t == null || t.cat == null) ? -1 : t.cat.index();
+    }
+
+    /** whether this empire still has any tech to research in a category */
+    private static boolean hasResearchChoices(Empire emp, int catIndex) {
+        return !emp.tech().category(catIndex).techIdsAvailableForResearch().isEmpty();
+    }
+
+    private static Messages.Prompt selectTech(Empire emp, int catIndex) {
+        rotp.model.tech.TechCategory cat = emp.tech().category(catIndex);
+        List<String> ids = new ArrayList<>();
+        List<String> names = new ArrayList<>();
+        for (String techId : cat.techIdsAvailableForResearch()) {
+            rotp.model.tech.Tech tk = rotp.model.tech.TechLibrary.current().tech(techId);
+            if (tk == null)
+                continue;
+            ids.add(techId);
+            names.add(tk.name());
+        }
+        Messages.Prompt p = new Messages.Prompt();
+        p.type = "SELECT_TECH";
+        p.category = catIndex;
+        p.text = "Choose the next " + categoryName(catIndex) + " research";
+        p.choiceIds = ids.toArray(new String[0]);
+        p.choiceNames = names.toArray(new String[0]);
+        return p;
+    }
+
+    private static final String[] CATEGORY_NAMES = {
+        "Computers", "Construction", "Force Fields", "Planetology", "Propulsion", "Weapons"
+    };
+
+    private static String categoryName(int catIndex) {
+        return (catIndex >= 0 && catIndex < CATEGORY_NAMES.length) ? CATEGORY_NAMES[catIndex] : "technology";
     }
 
     private static Messages.Notification note(String category, String text, int systemId, int empireId) {

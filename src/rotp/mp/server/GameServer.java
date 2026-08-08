@@ -1344,16 +1344,22 @@ public class GameServer extends WebSocketServer {
                 Empire emp = galaxy().empire(e.getValue().empireId);
                 if (emp == null)
                     continue;
-                List<Messages.Notification> items;
+                NotificationCenter.Result result;
                 synchronized (gameLock) {
-                    items = notiCenter.update(emp);
+                    result = notiCenter.update(emp);
                 }
-                if (items.isEmpty())
-                    continue;
-                Messages.Notifications msg = new Messages.Notifications();
-                msg.turn = galaxy().currentTurn();
-                msg.items = items;
-                send(e.getKey(), Protocol.encode(msg));
+                if (!result.notifications.isEmpty()) {
+                    Messages.Notifications msg = new Messages.Notifications();
+                    msg.turn = galaxy().currentTurn();
+                    msg.items = result.notifications;
+                    send(e.getKey(), Protocol.encode(msg));
+                }
+                if (!result.prompts.isEmpty()) {
+                    Messages.Prompts msg = new Messages.Prompts();
+                    msg.turn = galaxy().currentTurn();
+                    msg.items = result.prompts;
+                    send(e.getKey(), Protocol.encode(msg));
+                }
             }
         }
     }

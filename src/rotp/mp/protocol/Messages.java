@@ -359,6 +359,29 @@ public final class Messages {
         public List<Notification> items = new ArrayList<>();
     }
 
+    /**
+     * server -> client: interactive decisions awaiting the player this turn (Phase 3).
+     * The human resolves each via the matching command; if left unresolved the server's
+     * AI default stands. v1 covers SELECT_TECH (choose the next tech in a category that
+     * just completed one — resolve with setResearchChoice). Diplomacy/council prompts
+     * will reuse this envelope.
+     */
+    public static class Prompts {
+        public int turn;
+        public List<Prompt> items = new ArrayList<>();
+    }
+
+    public static class Prompt {
+        public String type;       // "SELECT_TECH"
+        public int category;      // research category (0-5) for SELECT_TECH, else -1
+        public String text;       // human-readable
+        // SELECT_TECH: the techs available to research now, so the prompt is
+        // self-contained (independent of view/notification ordering). Parallel
+        // arrays; resolve by sending SetResearchChoice{category, chosen id}.
+        public String[] choiceIds;
+        public String[] choiceNames;
+    }
+
     public static class Notification {
         public String category;   // CONTACT, DIPLOMACY, COLONY_GAINED, COLONY_LOST
         public String text;       // human-readable, English for now

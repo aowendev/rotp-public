@@ -76,6 +76,7 @@ public final class Protocol {
         register("diploReply",     Messages.DiploReply.class);
         register("cmdResult",      Messages.CommandResult.class);
         register("notifications",  Messages.Notifications.class);
+        register("prompts",        Messages.Prompts.class);
     }
 
     private Protocol() { }
