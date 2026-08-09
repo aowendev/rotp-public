@@ -804,18 +804,25 @@ currently cannot. Everything here is a Phase-4 blocker under the definition abov
    Likewise chosen for the player today.
 3. **Joint war offers** — `receiveOfferJointWar` / `receiveCounterJointWar` and
    `DiplomacyJointWarMenu` have no protocol equivalent. The last audience action missing.
-4. **A written protocol specification — WRITTEN (2026-08-09), living in the private
-   Phase-5 repo** (`../star-lords-online/docs/protocol.md`, with `client-guide.md`
-   alongside it). Covers the envelope, every message and field, the PlayerView, all six
+4. **A written protocol specification — DONE (2026-08-09), and published here as an
+   OPEN STANDARD.** `docs/protocol.md` (message reference) and
+   `docs/protocol-implementers-guide.md` (lifecycle, reconnection, the behaviours that
+   read as bugs). Covers the envelope, every message and field, the PlayerView, all six
    prompt types and how each resolves, and the seven notification categories — extracted
-   from the message registry and view model rather than written from memory, and
-   spot-checked against the source. It is what keeps the private client a non-derivative
-   work, so it is engineering, not paperwork.
-   **Maintenance hazard to watch:** the spec lives in a *different, private* repo, so a
-   protocol change made here will not obviously break anything there. Any change to
-   `Messages`/`Protocol`/`PlayerView` must be mirrored into that document, and it is
-   worth deciding whether a copy belongs in this repo too — an open server arguably
-   ought to document its own protocol publicly.
+   from the message registry and view model rather than written from memory, then
+   spot-checked against the source.
+   **Both are CC0, deliberately NOT GPL**, with an explicit implementation grant: anyone
+   may implement the protocol in any language, in software under any licence, including
+   proprietary, with no obligation. Recorded in `LICENSE` alongside the repo's other
+   per-asset carve-outs. The rationale (user, 2026-08-09): **the protocol was designed
+   for this fork, not inherited** — the original game is single-player and has no network
+   protocol — so it is ours to license, and it is worth more as a standard others can
+   build on than as a private asset.
+   **Keep the distinction:** the *specification* is CC0; the server's Java
+   *implementation* of it (`src/rotp/mp/`) stays GPL. A client that wants to be
+   unencumbered must be built from the spec, not by porting `Messages.java`.
+   **When the protocol changes, change the spec in the same commit** — it lives beside
+   the implementation precisely so that is possible.
 
 (1) and (2) are **queued turn-notifications the server does not yet convert into
 prompts** — the *same shape* as COLONIZE / INCOMING_DIPLOMACY and now BOMBARD, all of

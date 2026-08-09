@@ -3,6 +3,32 @@ This is the License file for the various intellectual property assets within thi
 These licenses are all legally enforceable, so please understand them before modifying for distributing the game. 
 
 
+============================
+MULTIPLAYER PROTOCOL DOCS
+============================
+docs/protocol.md and docs/protocol-implementers-guide.md are released under
+CC0 1.0 Universal (public domain dedication):
+
+    https://creativecommons.org/publicdomain/zero/1.0/
+
+They are deliberately NOT under the GPL. They specify the JSON-over-WebSocket
+protocol this game's multiplayer server speaks, and the intent is that anyone
+may implement that protocol - in any language, in software under any license,
+open source or proprietary, free or commercial.
+
+IMPLEMENTATION GRANT: implementing this specification does not make your
+software a derivative work of this project and creates no license obligation.
+No attribution, no source sharing, no permission required.
+
+The protocol is original work created for the multiplayer fork. The original
+game is single-player and has no network protocol.
+
+Note this covers the SPECIFICATION DOCUMENTS only. The server's Java
+implementation of the protocol (src/rotp/mp/) is GPL like the rest of the
+source code - build from the spec, not by copying that code, if you want your
+client to stay unencumbered.
+
+
 ===========
 SOURCE CODE
 ===========
