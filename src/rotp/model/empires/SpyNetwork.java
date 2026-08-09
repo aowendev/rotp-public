@@ -63,6 +63,10 @@ public final class SpyNetwork implements Base, Serializable {
     private float allocationBC = 0;
     private Mission mission = Mission.HIDE;
     private int lastSpyDate = -1;
+    // multiplayer: the empire id this network's owner wants to frame for espionage against
+    // this target when a theft is caught (-1 = frame no one). Only used for remote humans;
+    // single-player picks the frame via the espionage UI, AI empires via suggestToFrame.
+    private int frameTarget = -1;
 
     private final FleetView fleetView  = new FleetView();
     private List<String> possibleTechs = new ArrayList<>();
@@ -106,7 +110,9 @@ public final class SpyNetwork implements Base, Serializable {
     public boolean isHide()          { return mission == Mission.HIDE; }
     public boolean isSabotage()      { return mission == Mission.SABOTAGE; }
     public boolean isEspionage()     { return mission == Mission.ESPIONAGE; }
-    
+    public int frameTarget()         { return frameTarget; }
+    public void frameTarget(int id)  { frameTarget = id; }
+
     public int maxSpies()            { return maxSpies; }
     public void maxSpies(int n)      { maxSpies = max(0,n); }
     public void increaseMaxSpies()   { 
@@ -308,8 +314,13 @@ public final class SpyNetwork implements Base, Serializable {
         }
         
         if (rpt.spiesLost() > 0) {
-            if (view.owner().isPlayer() || view.empire().isPlayer())
-            session().enableSpyReport();
+            // deliver the spy report to whichever side is a human (owner: their spies were
+            // lost; target: their counter-espionage caught spies). !decidedByAI() is a
+            // no-op for single-player (only the player fires enableSpyReport there).
+            if (!view.owner().decidedByAI())
+                session().enableSpyReport(view.owner());
+            if (!view.empire().decidedByAI())
+                session().enableSpyReport(view.empire());
         }
         
         if (spyConfessed || activeSpies.isEmpty() || isHide())
@@ -332,20 +343,20 @@ public final class SpyNetwork implements Base, Serializable {
         Empire emp = view().empire();
         Empire owner = view().owner();
         
-        List<String> prevPossible = owner.isPlayer() ? new ArrayList<>(possibleTechs()) : null;
+        List<String> prevPossible = !owner.decidedByAI() ? new ArrayList<>(possibleTechs()) : null;
 
         tech.spyOnTechs(emp.tech());
         float maxTech = owner.tech().maxTechLevel();
         possibleTechs = emp.tech().worseTechsUnknownToCiv(owner.tech(), maxTech);
         
-        if (owner.isPlayer()) {
+        if (!owner.decidedByAI()) {
             List<String> newPossible = new ArrayList<>(possibleTechs());
             newPossible.removeAll(prevPossible);
             if (!newPossible.isEmpty()) {
-                session().enableSpyReport();
+                session().enableSpyReport(owner);
                 report().recordTechsLearned(newPossible);
             }
-        }  
+        }
     }
     public void noteTradedTech(Tech t) {
         TechCategory cat = tech.category(t.cat.index());
@@ -448,8 +459,15 @@ public final class SpyNetwork implements Base, Serializable {
         // ai will choose now.. player choice is deferred until UI is displayed
         if (owner().isAIControlled()) {
             eMission.stealTech(owner().ai().scientist().mostDesirableTech(topTechs));
-            if (eMission.canFrame())
-                eMission.frameEmpire(owner().spyMasterAI().suggestToFrame(eMission.empiresToFrame()));
+            if (eMission.canFrame()) {
+                // a remote human frames per their standing preference (frameTarget), which
+                // MOO1's reactive "frame a race" choice becomes in a we-go game; AI empires
+                // use suggestToFrame. Single-player never reaches here (see the else branch).
+                if (owner().decidedByAI())
+                    eMission.frameEmpire(owner().spyMasterAI().suggestToFrame(eMission.empiresToFrame()));
+                else
+                    eMission.frameEmpire(humanFrameChoice(eMission));
+            }
         }
         else {
             // this brings up category selection panel
@@ -459,6 +477,17 @@ public final class SpyNetwork implements Base, Serializable {
         }
 
         return eMission;
+    }
+    /** the empire a remote human wants framed for this theft, per their standing
+     * preference — only if it is actually one of the mission's framable empires;
+     * otherwise null (frame no one) */
+    private Empire humanFrameChoice(EspionageMission m) {
+        if (frameTarget < 0)
+            return null;
+        for (Empire e : m.empiresToFrame())
+            if ((e != null) && (e.id == frameTarget))
+                return e;
+        return null;
     }
     public void checkForTreatyBreak() {
         Empire victim = empire();

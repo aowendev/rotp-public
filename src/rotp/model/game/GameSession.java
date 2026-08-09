@@ -97,6 +97,9 @@ public final class GameSession implements Base, Serializable {
     private final GameStatus status = new GameStatus();
     private long id;
     private boolean spyActivity = false;
+    // empires (by id) with new spy-report activity this turn; the MP server delivers each
+    // its own spy report. Transient + reset each turn alongside spyActivity.
+    private transient java.util.Set<Integer> spyReportEmpires = new java.util.HashSet<>();
     // GNN is a galaxy-wide news network. The multiplayer server sets this so GNN news is
     // generated without the local player's fog of war (every empire/system is "known", true
     // names used) and can then be broadcast to all players. Single-player leaves it off.
@@ -191,7 +194,18 @@ public final class GameSession implements Base, Serializable {
     public void enableSpyReport() {
         spyActivity = true;
     }
+    /** record spy-report activity for a specific empire so the multiplayer server can
+     * deliver that empire its own spy report; also sets the single-player player() flag */
+    public void enableSpyReport(Empire owner) {
+        if (owner == null)
+            return;
+        if (owner.isPlayer())
+            spyActivity = true;
+        spyReportEmpires.add(owner.id);
+    }
     public boolean spyActivity()            { return spyActivity; }
+    /** empire ids that had new spy-report activity this turn (reset each turn) */
+    public java.util.Set<Integer> spyReportEmpires() { return spyReportEmpires; }
     public void addSystemScouted(StarSystem sys) {
         systemsScouted().get("Scouts").add(sys);
     }
@@ -268,6 +282,7 @@ public final class GameSession implements Base, Serializable {
             systemsToAllocate().clear();
             shipsConstructed().clear();
             spyActivity = false;
+            spyReportEmpires().clear();
             galaxy().startGame();
             saveRecentSession(false);
             saveBackupSession(1);
@@ -342,6 +357,7 @@ public final class GameSession implements Base, Serializable {
                 clearScoutedSystems();
                 shipsConstructed().clear();
                 spyActivity = false;
+                spyReportEmpires().clear();
                 clearAlerts();
                 SessionUI.get().repaint();
                 processNotifications();
@@ -411,7 +427,14 @@ public final class GameSession implements Base, Serializable {
                     SessionUI.get().allocateSystems();
 
                 if (spyActivity)
-                    SpyReportAlert.create();
+                    SpyReportAlert.create();   // single-player: the local player's spy report
+                // multiplayer: deliver each empire (with spy-report activity) its own report,
+                // routed to that empire's client via the alert recipient
+                for (int empId : spyReportEmpires()) {
+                    Empire owner = galaxy().empire(empId);
+                    if ((owner != null) && !owner.isPlayer())
+                        SpyReportAlert.create().recipient(owner);
+                }
 
                 log("Refreshing Player Views");
                 NoticeMessage.resetSubstatus(text("TURN_REFRESHING"));

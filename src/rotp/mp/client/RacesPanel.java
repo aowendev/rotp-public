@@ -187,6 +187,21 @@ public class RacesPanel extends JPanel {
         mission.setSelectedItem((e.spyMission == null) ? "HIDE" : e.spyMission);
         mission.addActionListener(a -> setSpyMission(e.id, (String) mission.getSelectedItem()));
         spyRow.add(mission);
+        // MOO1-style framing: if caught stealing tech from this empire, blame another
+        JComboBox<FrameItem> frame = new JComboBox<>();
+        frame.addItem(new FrameItem(-1, "Frame: none"));
+        if (lastView != null)
+            for (EmpireDto other : Diplomacy.contacted(lastView))
+                if (other.id != e.id)
+                    frame.addItem(new FrameItem(other.id, "Frame: " + Diplomacy.displayName(other)));
+        selectFrame(frame, e.spyFrameEmpireId);
+        frame.setToolTipText("If your spy is caught stealing tech from this empire, pin the "
+            + "blame on the chosen empire (MOO1-style). 'None' = frame no one.");
+        frame.addActionListener(a -> {
+            FrameItem fi = (FrameItem) frame.getSelectedItem();
+            if (fi != null) setSpyFrame(e.id, fi.id);
+        });
+        spyRow.add(frame);
         bottom.add(spyRow);
 
         JPanel reportRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
@@ -219,6 +234,29 @@ public class RacesPanel extends JPanel {
         m.empireId = empireId;
         m.mission = missionName;
         orderSender.accept(m);
+    }
+
+    private void setSpyFrame(int spiedOnEmpireId, int frameEmpireId) {
+        Messages.SetSpyFrame m = new Messages.SetSpyFrame();
+        m.empireId = spiedOnEmpireId;
+        m.frameEmpireId = frameEmpireId;
+        orderSender.accept(m);
+    }
+
+    private static void selectFrame(JComboBox<FrameItem> combo, int frameEmpireId) {
+        for (int i = 0; i < combo.getItemCount(); i++)
+            if (combo.getItemAt(i).id == frameEmpireId) {
+                combo.setSelectedIndex(i);
+                return;
+            }
+    }
+
+    /** a frame-target option: an empire to blame (id) with a display label */
+    private static final class FrameItem {
+        final int id;
+        final String label;
+        FrameItem(int id, String label) { this.id = id; this.label = label; }
+        @Override public String toString() { return label; }
     }
 
     /** show the intelligence report on a race (what our spies have learned) */

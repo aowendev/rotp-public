@@ -59,6 +59,48 @@ public class SpyDiplomacyTest {
 
     @Test
     @Timeout(120)
+    void aHumanCanSetAnEspionageFramePreference() throws Exception {
+        server = MpTestSupport.startServer(1);
+        alice = new Client(server.port, "Alice");
+        PlayerView v = alice.awaitView();
+        assumeTrue(GameSession.instance().galaxy().numActiveEmpires() >= 3,
+            "framing needs a third empire to blame");
+
+        // establish contact with a spy target (empire 1) and a scapegoat (empire 2)
+        Empire human = GameSession.instance().galaxy().empire(v.empireId);
+        Empire target = GameSession.instance().galaxy().empire(1);
+        Empire scapegoat = GameSession.instance().galaxy().empire(2);
+        for (Empire e : new Empire[]{target, scapegoat}) {
+            human.makeContact(e);
+            e.makeContact(human);
+        }
+        alice.ready();
+
+        // set a standing frame preference: blame the scapegoat for espionage vs the target
+        Messages.SetSpyFrame sf = new Messages.SetSpyFrame();
+        sf.empireId = target.id;
+        sf.frameEmpireId = scapegoat.id;
+        assertTrue(alice.order(sf).ok, "framing preference accepted");
+        assertEquals(scapegoat.id, MpTestSupport.empire(alice.lastView, target.id).spyFrameEmpireId,
+            "the frame preference is reflected in the view");
+
+        // validation: can't frame yourself or the empire you're spying on
+        Messages.SetSpyFrame self = new Messages.SetSpyFrame();
+        self.empireId = target.id; self.frameEmpireId = human.id;
+        assertFalse(alice.order(self).ok, "cannot frame yourself");
+        Messages.SetSpyFrame sameAsTarget = new Messages.SetSpyFrame();
+        sameAsTarget.empireId = target.id; sameAsTarget.frameEmpireId = target.id;
+        assertFalse(alice.order(sameAsTarget).ok, "cannot frame the empire you are spying on");
+
+        // clearing the preference (-1 = frame no one)
+        sf.frameEmpireId = -1;
+        assertTrue(alice.order(sf).ok, "clearing the frame preference accepted");
+        assertEquals(-1, MpTestSupport.empire(alice.lastView, target.id).spyFrameEmpireId,
+            "the cleared preference is reflected in the view");
+    }
+
+    @Test
+    @Timeout(120)
     void securitySpyAndDiplomacy() throws Exception {
         server = MpTestSupport.startServer(1);
         alice = new Client(server.port, "Alice");

@@ -304,6 +304,17 @@ public final class Messages {
         public String mission;
     }
 
+    /**
+     * set which empire to frame for espionage against a contacted empire, MOO1-style: when
+     * your spy is caught stealing tech from empireId, the blame is pinned on frameEmpireId
+     * (if that empire is a plausible scapegoat for the theft). frameEmpireId = -1 frames
+     * no one. This is a standing preference (we-go analogue of MOO1's reactive choice).
+     */
+    public static class SetSpyFrame {
+        public int empireId;        // the empire being spied on
+        public int frameEmpireId;   // the empire to frame, or -1 for none
+    }
+
     /** set empire-wide internal security (0-10 ticks) */
     public static class SetSecurity {
         public int allocation;

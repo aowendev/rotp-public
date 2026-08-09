@@ -76,6 +76,7 @@ public final class PlayerViews {
                 ed.spySpending = ev.spies().allocation();
                 ed.spyMission = ev.spies().isHide() ? "HIDE"
                     : ev.spies().isEspionage() ? "ESPIONAGE" : "SABOTAGE";
+                ed.spyFrameEmpireId = ev.spies().frameTarget();
                 ed.spies = ev.spies().numActiveSpies();
                 ed.maxSpies = ev.spies().maxSpies();
                 ed.relativePower = ev.empirePower();

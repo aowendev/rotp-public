@@ -68,6 +68,7 @@ public final class Protocol {
         register("setShipBuild",   Messages.SetShipBuild.class);
         register("setSpySpending", Messages.SetSpySpending.class);
         register("setSpyMission",  Messages.SetSpyMission.class);
+        register("setSpyFrame",    Messages.SetSpyFrame.class);
         register("setSecurity",    Messages.SetSecurity.class);
         register("saveGame",       Messages.SaveGame.class);
         register("diploOffer",     Messages.DiploOffer.class);

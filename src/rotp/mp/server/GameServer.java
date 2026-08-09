@@ -247,6 +247,8 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "setSpySpending", (Messages.SetSpySpending) msg);
         else if (msg instanceof Messages.SetSpyMission)
             handleCommand(conn, "setSpyMission", (Messages.SetSpyMission) msg);
+        else if (msg instanceof Messages.SetSpyFrame)
+            handleCommand(conn, "setSpyFrame", (Messages.SetSpyFrame) msg);
         else if (msg instanceof Messages.SetSecurity)
             handleCommand(conn, "setSecurity", (Messages.SetSecurity) msg);
         else if (msg instanceof Messages.SaveGame)
@@ -832,6 +834,8 @@ public class GameServer extends WebSocketServer {
                 err = applySetSpySpending(emp, (Messages.SetSpySpending) cmd);
             else if (cmd instanceof Messages.SetSpyMission)
                 err = applySetSpyMission(emp, (Messages.SetSpyMission) cmd);
+            else if (cmd instanceof Messages.SetSpyFrame)
+                err = applySetSpyFrame(emp, (Messages.SetSpyFrame) cmd);
             else if (cmd instanceof Messages.SetSecurity)
                 err = applySetSecurity(emp, (Messages.SetSecurity) cmd);
             else if (cmd instanceof Messages.DiploOffer)
@@ -1296,6 +1300,22 @@ public class GameServer extends WebSocketServer {
             case "SABOTAGE":  ev.spies().beginSabotage(); return null;
             default:          return "Mission must be HIDE, ESPIONAGE, or SABOTAGE";
         }
+    }
+
+    private String applySetSpyFrame(Empire emp, Messages.SetSpyFrame cmd) {
+        EmpireView ev = contactedView(emp, cmd.empireId);
+        if (ev == null)
+            return "No contact with that empire";
+        if (cmd.frameEmpireId >= 0) {
+            if (cmd.frameEmpireId == emp.id)
+                return "Cannot frame yourself";
+            if (cmd.frameEmpireId == cmd.empireId)
+                return "Cannot frame the empire you are spying on";
+            if (contactedView(emp, cmd.frameEmpireId) == null)
+                return "No contact with the empire to frame";
+        }
+        ev.spies().frameTarget(cmd.frameEmpireId);   // -1 = frame no one
+        return null;
     }
 
     private String applySetSecurity(Empire emp, Messages.SetSecurity cmd) {

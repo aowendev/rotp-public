@@ -70,6 +70,7 @@ public final class PlayerView {
         public int maxTradeLevel;    // largest offerable trade level right now
         public int spySpending;      // 0-20 ticks
         public String spyMission;    // HIDE / ESPIONAGE / SABOTAGE
+        public int spyFrameEmpireId = -1;  // empire to frame for espionage vs this empire (-1 = none)
         public int spies;
         public int maxSpies;
         // intelligence report (best current estimate; all defaults for your own entry)
