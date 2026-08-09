@@ -372,6 +372,8 @@ public class ClientMain {
                             promptColonize(frame, clientHolder[0], p);
                         else if ("INCOMING_TECH_REQUEST".equals(p.type))
                             racesPanel.promptIncomingTechRequest(p);
+                        else if ("BOMBARD".equals(p.type))
+                            promptBombard(frame, clientHolder[0], p);
                     }
                 }
                 handleMessage(msg, galaxyPanel, colonyPanel, systemInfoPanel, researchPanel, fleetsPanel, shipDesignPanel, empirePanel, racesPanel, lastView, status, nextTurn);
@@ -523,6 +525,23 @@ public class ClientMain {
             Messages.Colonize c = new Messages.Colonize();
             c.systemId = p.systemId;
             client.sendMessage(c);
+        }
+    }
+
+    /**
+     * Your fleet holds orbit over a colony it can bomb. The battle itself already
+     * auto-resolved; this is the separate, deliberate choice to bombard another
+     * player's world. Declining leaves the fleet in orbit and asks again next turn.
+     */
+    private static void promptBombard(JFrame frame, NetClient client, Messages.Prompt p) {
+        String body = (p.text == null ? "Bombard this colony?" : p.text);
+        int pick = javax.swing.JOptionPane.showConfirmDialog(frame, body,
+            "Bombard", javax.swing.JOptionPane.YES_NO_OPTION,
+            javax.swing.JOptionPane.QUESTION_MESSAGE);
+        if (pick == javax.swing.JOptionPane.YES_OPTION) {
+            Messages.Bombard b = new Messages.Bombard();
+            b.systemId = p.systemId;
+            client.sendMessage(b);
         }
     }
 

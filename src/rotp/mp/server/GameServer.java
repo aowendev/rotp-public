@@ -306,6 +306,8 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "offerAid", (Messages.OfferAid) msg);
         else if (msg instanceof Messages.Threaten)
             handleCommand(conn, "threaten", (Messages.Threaten) msg);
+        else if (msg instanceof Messages.Bombard)
+            handleCommand(conn, "bombard", (Messages.Bombard) msg);
         else if (msg instanceof Messages.CastCouncilVote)
             handleCommand(conn, "castCouncilVote", (Messages.CastCouncilVote) msg);
         else if (msg instanceof Messages.DesignCatalog)
@@ -995,6 +997,8 @@ public class GameServer extends WebSocketServer {
                 err = applyOfferAid(conn, emp, (Messages.OfferAid) cmd);
             else if (cmd instanceof Messages.Threaten)
                 err = applyThreaten(conn, emp, (Messages.Threaten) cmd);
+            else if (cmd instanceof Messages.Bombard)
+                err = applyBombard(emp, (Messages.Bombard) cmd);
             else
                 err = applyCastCouncilVote(emp, (Messages.CastCouncilVote) cmd);
         }
@@ -2147,6 +2151,8 @@ public class GameServer extends WebSocketServer {
                     collectDiplomacyPrompt((DiplomaticNotification) tn);
                 else if (tn instanceof ColonizeSystemNotification)
                     collectColonizePrompt((ColonizeSystemNotification) tn);
+                else if (tn instanceof rotp.ui.notifications.BombardSystemNotification)
+                    collectBombardPrompt((rotp.ui.notifications.BombardSystemNotification) tn);
                 else if (tn instanceof rotp.ui.notifications.PublicNews)
                     collectPublicNews((rotp.ui.notifications.PublicNews) tn);
             }
@@ -2241,6 +2247,45 @@ public class GameServer extends WebSocketServer {
         Messages.Prompt p = techRequestPrompt(requestor, wanted, counters);
         pendingTechRequests.computeIfAbsent(target.id, k -> new ArrayList<>()).add(p);
         pendingPrompts.computeIfAbsent(target.id, k -> new ArrayList<>()).add(p);
+    }
+
+    /**
+     * A remote human's fleet is in orbit over a colony it may bomb. The battle itself
+     * auto-resolved (a tactical fight would stall everyone else), but bombarding
+     * another player's world is a deliberate choice, so ask. Ignoring the prompt
+     * simply does not bomb; it returns next turn while the fleet stays in orbit.
+     */
+    private void collectBombardPrompt(rotp.ui.notifications.BombardSystemNotification bn) {
+        ShipFleet fl = bn.fleet();
+        int sysId = bn.systemId();
+        StarSystem sys = galaxy().system(sysId);
+        if ((fl == null) || (sys == null) || !fl.canAttackPlanets() || !fl.inOrbit())
+            return;
+        Empire owner = galaxy().empire(fl.empId());
+        if ((owner == null) || !sys.isColonized() || !owner.aggressiveWith(owner.sv.empId(sysId)))
+            return;   // last-minute check: still bombable?
+        Messages.Prompt p = new Messages.Prompt();
+        p.type = "BOMBARD";
+        p.systemId = sysId;
+        p.empireId = owner.sv.empId(sysId);
+        p.text = "Bombard " + colonizeTargetName(owner, sysId) + "?";
+        pendingPrompts.computeIfAbsent(owner.id, k -> new ArrayList<>()).add(p);
+    }
+
+    /** resolve a BOMBARD prompt: bomb the colony this fleet is orbiting */
+    private String applyBombard(Empire emp, Messages.Bombard cmd) {
+        StarSystem sys = galaxy().system(cmd.systemId);
+        if (sys == null)
+            return "No such system";
+        if (!sys.isColonized())
+            return "Nothing there to bombard";
+        if (!emp.aggressiveWith(emp.sv.empId(cmd.systemId)))
+            return "You are not at war with that empire";
+        ShipFleet fl = galaxy().ships.orbitingFleet(emp.id, cmd.systemId);
+        if ((fl == null) || !fl.inOrbit() || !fl.canAttackPlanets())
+            return "You have no fleet in orbit that can bombard";
+        fl.bombard();
+        return null;
     }
 
     private void collectColonizePrompt(ColonizeSystemNotification cn) {

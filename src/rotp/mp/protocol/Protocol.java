@@ -86,6 +86,7 @@ public final class Protocol {
         register("respondTechRequest", Messages.RespondTechRequest.class);
         register("offerAid",       Messages.OfferAid.class);
         register("threaten",       Messages.Threaten.class);
+        register("bombard",        Messages.Bombard.class);
         register("castCouncilVote", Messages.CastCouncilVote.class);
         register("cmdResult",      Messages.CommandResult.class);
         register("notifications",  Messages.Notifications.class);

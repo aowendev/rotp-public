@@ -126,7 +126,7 @@ mvn package -DskipTests
 ipconfig getifaddr en0            # the server machine's LAN address, e.g. 192.168.1.4
 
 # machine A (server; no bind= means every interface, so the LAN can reach it)
-java -Xmx2g -jar target/rotp-1.04-mp-SNAPSHOT.jar --server port=8777 players=2 size=small
+java -Xmx384m -jar target/rotp-1.04-mp-SNAPSHOT.jar --server port=8777 players=2 size=small
 # machine A can also play: java -jar target/rotp-client.jar --client host=localhost port=8777 name=Alice
 # machine B (scp target/rotp-client.jar over first)
 java -jar rotp-client.jar --client host=192.168.1.4 port=8777 name=Bob
@@ -135,7 +135,7 @@ java -jar rotp-client.jar --client host=192.168.1.4 port=8777 name=Bob
 
 # hosted on the internet (Phase 6): one JVM per game; bind=/keystore=/savedir= are
 # the deployment args - see docs/deployment.md.
-java -Xmx2g -jar target/rotp-1.04-mp-SNAPSHOT.jar --server port=8777 players=2 \
+java -Xmx384m -jar target/rotp-1.04-mp-SNAPSHOT.jar --server port=8777 players=2 \
      bind=127.0.0.1 savedir=/var/lib/rotp/game-1
 # ...and connect from anywhere (url= takes a full ws:// or wss:// URL, so it reaches
 # a game behind a TLS proxy at a path, not just host:port)
@@ -764,7 +764,7 @@ See **"Then — Phase 4 — what is still missing"** for the outstanding list.
   Cloud Always Free Ampere A1 ARM VM (4 OCPU / 24 GB)** running the plain fat JAR — no
   container (the shade plugin already produces a runnable JAR; Docker would be overkill).
   One JVM hosts one game (the engine has a process-wide `GameSession`), so N games = N
-  processes on N ports; at `-Xmx2g` that VM fits about six. New server args: `bind=` (listen
+  processes on N ports; measured at ~128MB per game (see docs/deployment.md), so even a 1GB box fits several. New server args: `bind=` (listen
   on loopback behind a proxy), `keystore=`/`keystorePassword=` (serve `wss://` from the JVM
   itself; a bad keystore **fails startup** rather than silently serving plain `ws://`), and
   `savedir=` (per-game save dir, set without rewriting the shared prefs file via
@@ -907,7 +907,7 @@ functionality, and lumping it in obscured what Phase 4 actually owed.
 Already built and smoke-tested (see **`docs/deployment.md`** and `deploy/`): the
 `bind=` / `keystore=` / `keystorePassword=` / `savedir=` server arguments, the
 `rotp-game@.service` systemd template, and the Oracle Cloud ARM + Caddy runbook. One JVM
-hosts one game; ~six fit an Always Free Ampere A1 VM at `-Xmx2g`.
+hosts one game at ~128MB measured, so a 1 vCPU / 1GB VM fits several.
 
 **Still to build: a front end that spins up a JVM for players to join.** Today an
 operator starts each game by hand with `systemctl start rotp-game@N`. Phase 6 needs a

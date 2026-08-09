@@ -7,8 +7,10 @@
 # directory, so games never collide over ports or save files.
 #
 # The engine holds the whole galaxy in memory and one JVM hosts one game, so
-# capacity is bounded by RAM: at the -Xmx2g below, an Oracle Cloud Always Free
-# Ampere A1 VM (4 OCPU / 24 GB) comfortably runs six.
+# capacity is bounded by RAM - far less of it than you would guess. Measured: a
+# LARGE galaxy with 15 empires driven 30 turns sits at ~98MB RSS and survives a
+# 256m heap with no OOM, so budget ~128MB per game. The 384m below is that plus
+# headroom. (Measured on `large`; `huge` and above are untested - give those more.)
 
 [Unit]
 Description=ROTP multiplayer game %i
@@ -21,7 +23,7 @@ User=rotp
 Group=rotp
 EnvironmentFile=/etc/rotp/game-%i.env
 WorkingDirectory=/opt/rotp
-ExecStart=/usr/bin/java -Xmx2g -jar /opt/rotp/rotp.jar --server \
+ExecStart=/usr/bin/java -Xmx384m -jar /opt/rotp/rotp.jar --server \
     port=${ROTP_PORT} \
     players=${ROTP_PLAYERS} \
     size=${ROTP_SIZE} \

@@ -477,6 +477,18 @@ public final class Messages {
         public String threat;
     }
 
+    /**
+     * client -> server: the answer to a BOMBARD prompt — your fleet is in orbit over
+     * a colony you are aggressive with, and may bomb it. Ship combat auto-resolves in
+     * multiplayer (a tactical battle would stall every other player), but the decision
+     * to bombard is not part of the battle: it is a deliberate act against another
+     * player's world, so a human makes it. Declining just leaves the fleet in orbit,
+     * and the prompt returns next turn while it stays there.
+     */
+    public static class Bombard {
+        public int systemId;
+    }
+
     /** server -> client: the target's answer to a diplomatic offer */
     public static class DiploReply {
         public int empireId;

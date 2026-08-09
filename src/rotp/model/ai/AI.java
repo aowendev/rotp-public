@@ -217,8 +217,17 @@ public class AI implements Base {
             ColonizeSystemNotification.create(sys.id, fl, bestDesign);
     }
     public boolean promptForBombardment(StarSystem sys, ShipFleet fl) {
-        // if player, prompt for decision to bomb instead of deciding here
-        if (empire.isPlayerControlled()) {
+        // if a human, prompt for the decision to bomb instead of deciding here.
+        // !decidedByAI() rather than isPlayerControlled(): a no-op for single-player,
+        // but it also covers a REMOTE human, whose empire is AI-controlled on the
+        // server — otherwise the AI decides whether to glass another player's world.
+        if (!empire.decidedByAI()) {
+            // the auto-bombard settings are a local desktop preference; a remote
+            // human's server must not answer for them, so always ask
+            if (empire.isRemoteHuman()) {
+                BombardSystemNotification.create(id(sys), fl, false);
+                return false;
+            }
             if (UserPreferences.autoBombardNever())
                 return false;
             boolean autoBomb = false;

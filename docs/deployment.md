@@ -13,20 +13,57 @@ a real web page.
 **Shape of the deployment:** one JVM hosts one game (the engine keeps a single
 process-wide `GameSession`), so several concurrent games means several processes,
 one per port. Capacity is bounded by RAM, not CPU — turns resolve in well under a
-second and the server is idle between them. At `-Xmx2g` per game, an **Oracle Cloud
-Always Free Ampere A1 VM (4 OCPU / 24 GB)** runs about six games with headroom.
+second and the server is idle between them.
+
+**Measured sizing (2026-08-09), because the first guess here was an order of
+magnitude too high.** A **large** galaxy with 15 empires, driven 30 turns:
+
+| | |
+|---|---|
+| heap in use after 30 turns (post-GC) | ~23 MB |
+| RSS | ~98 MB |
+| runs in `-Xmx256m` without OOM | yes |
+
+So budget **~128 MB of RAM per concurrent game** and use `-Xmx384m` for headroom.
+The earlier `-Xmx2g` figure came from the *test suite's* JVM setting, which runs the
+engine plus two clients plus the harness in one process — it was never a measurement
+of a running server. Caveat: this was measured on `large`; `huge` and above are
+untested and deserve more.
+
+That changes which host you need: a **1 vCPU / 1 GB** box comfortably runs several
+games, so this does not require a large instance.
 
 There is no container image and none is needed: the build already produces a
 single runnable fat JAR (`maven-shade-plugin`), so a deployment is a JAR, a JVM,
 and a systemd unit.
 
 ```
-                        ┌──────── Oracle Cloud ARM VM ────────┐
+                        ┌─────────── one small VM ────────────┐
   browser ──wss:443──▶  │  Caddy  ──ws──▶  java -jar :8777    │  game 1
                         │         ──ws──▶  java -jar :8778    │  game 2
                         │         ──ws──▶  ...        :8782   │  game 6
                         └─────────────────────────────────────┘
 ```
+
+## Which host
+
+**Initial deployment testing: Scaleway** (decision, 2026-08-09), because of concerns
+about relying on Oracle's Always Free tier.
+
+**Be aware of what you are signing up for: Scaleway has no free tier for VMs.** Their
+pricing page lists no perpetually-free compute; the cheapest instance is
+**STARDUST1-S — 1 vCPU / 1 GB RAM, ~€0.43/month** (there is a startup-credits
+programme, but that is credits, not a free tier). Verified against
+<https://www.scaleway.com/en/pricing/virtual-instances/> on 2026-08-09 — cloud
+pricing moves, so re-check before committing.
+
+The good news is the sizing above: at ~128 MB per game a 1 GB Stardust runs several
+concurrent games, so the cheapest instance is a real option rather than a compromise.
+
+Alternatives, for the record: Oracle Cloud Always Free (Ampere A1, up to 4 OCPU /
+24 GB — genuinely free, but instances can be reclaimed, which is the concern that
+prompted the move) and any other small VPS. Nothing below is Scaleway-specific
+except where noted; it is a JAR, a JVM, and a systemd unit.
 
 ## 1. Build
 
@@ -108,7 +145,7 @@ java -jar rotp-client.jar --client url=wss://rotp.example.com/game/1 name=Alice
 For a single self-contained process — a player hosting one game for friends:
 
 ```bash
-java -Xmx2g -jar rotp.jar --server port=8777 bind=0.0.0.0 \
+java -Xmx384m -jar rotp.jar --server port=8777 bind=0.0.0.0 \
      keystore=/etc/rotp/cert.p12 keystorePassword=...
 ```
 
@@ -126,12 +163,14 @@ unencrypted public port.
 
 ## 4. Open the ports
 
-Oracle Cloud filters traffic in two independent places, and both must allow it:
+Traffic is usually filtered in two independent places, and both must allow it —
+this catches people out, because opening one leaves the port still shut:
 
-1. **VCN security list / network security group** — add an ingress rule for TCP
-   443 (and 80, so Caddy can answer the ACME HTTP challenge) from `0.0.0.0/0`.
-2. **The instance's own firewall** — Oracle's images ship with restrictive rules
-   preloaded:
+1. **The provider's own network filter** — Scaleway security groups, or on Oracle
+   the VCN security list / NSG. Allow inbound TCP 443, and 80 so Caddy can answer
+   the ACME HTTP challenge.
+2. **The instance's own firewall** — some images (Oracle's especially) ship with
+   restrictive rules preloaded:
 
 ```bash
 # Ubuntu images
@@ -171,5 +210,4 @@ Only 80/443 are exposed. The game ports stay on loopback behind Caddy.
   *not* recover is the in-memory galaxy, so an unsaved game restarts from the
   last save (or not at all) — take saves before any planned restart.
 - **Sizing.** Raise `-Xmx` for large galaxies; lower the instance count to match.
-  The 2 GB in the unit file is sized against what the integration suite needs for
-  a full game engine.
+  The 384 MB in the unit file is the measurement above plus headroom, not a guess.

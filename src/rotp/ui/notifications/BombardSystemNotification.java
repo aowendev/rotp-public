@@ -17,12 +17,17 @@ package rotp.ui.notifications;
 
 import rotp.model.empires.Empire;
 import rotp.model.galaxy.ShipFleet;
+import rotp.model.game.GameSession;
 import rotp.ui.RotPUI;
 import rotp.util.Base;
 
 public class BombardSystemNotification implements TurnNotification, Base {
     private final ShipFleet fleet;
     private final int sysId;
+
+    /** the system this fleet is being asked to bombard (multiplayer server) */
+    public int systemId()      { return sysId; }
+    public ShipFleet fleet()   { return fleet; }
 
     public static void create(int systemId, ShipFleet fl, boolean autoBomb) {
         Empire emp = fl.empire();
@@ -45,6 +50,15 @@ public class BombardSystemNotification implements TurnNotification, Base {
         Empire emp1 = fl.empire();
         emp1.sv.refreshFullScan(sysId);
         Empire emp2 = emp1.sv.empire(sysId);
+
+        // multiplayer: a remote human decides for themselves. Queue it — there is no
+        // UI on the server — and let the server raise a BOMBARD prompt. Without this
+        // the fall-through below bombards immediately, so one player's world could be
+        // glassed without either player being asked.
+        if (emp1.isRemoteHuman() && !autoBomb) {
+            GameSession.instance().addTurnNotification(new BombardSystemNotification(sysId, fl));
+            return;
+        }
 
         if (emp1.isPlayerControlled() && !autoBomb)
             RotPUI.instance().promptForBombardment(sysId, fl);
