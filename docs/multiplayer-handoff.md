@@ -555,11 +555,26 @@ purely a client bug. **All four items are now DONE (2026-08-09); 77 tests green,
 
 **Backend is now considered complete and end-to-end tested for Phase 5.** GNN is now a
 true galaxy-wide news network (no fog of war, broadcast to all — see "GNN NO-FOG" above).
-Remaining known limitations, acceptable for the solo-and-AI-first v1: `SpyReportAlert` is
-empire-0-only (its `SpyNetwork` gate is `isPlayer()`; the specific spy events — tech
-stolen, bases/factories sabotaged — DO route per-empire), and the per-empire
-`NotificationCenter` text (system names in colony/contact events) is still framed from
-each recipient's own `sv`, which is correct per-empire.
+**SPY (2026-08-09):** (1) spy reports are now per-empire — `SpyNetwork.enableSpyReport(owner)`
+records the owning empire (`GameSession.spyReportEmpires`), gated on `!decidedByAI()`, and
+each empire gets its own `SpyReportAlert` routed to its client (being spied ON — bases /
+factories destroyed, tech stolen — already routes per-recipient). (2) MOO1-style
+**espionage framing**: a standing per-target preference (`SpyNetwork.frameTarget`, set via
+the `setSpyFrame` command, exposed as `EmpireDto.spyFrameEmpireId`, with a "Frame" combo in
+the reference client's Races panel) pins the blame on a chosen scapegoat when your spy is
+caught stealing tech — the we-go analogue of MOO1's reactive choice; AI still uses
+`suggestToFrame`, single-player still uses the espionage UI. Tests:
+`SpyDiplomacyTest.aHumanCanSetAnEspionageFramePreference`. GOTCHA fixed: `spyReportEmpires`
+is transient, so it deserializes as null after a save/load — lazily created in the getter
+(SaveLoadTest caught the NPE). Remaining limitation: per-empire `NotificationCenter` text
+(colony/contact system names) is framed from each recipient's own `sv`, which is correct
+per-empire.
+
+NOTE (test env, 2026-08-09): the whole `mvn test` in one shot can wedge on this machine
+under load (maven leaves a surefire fork that stops reporting; the timing-sensitive 2-human
+tests then hit their 120s timeouts). Running the mp tests in a few `-Dtest=A,B,C` batches
+is fast and reliable — all 78 pass that way; individual/batched runs are the source of
+truth, not a single stalled full-suite invocation.
 - **Async player-to-player diplomacy** — today a human→human offer already defers to the
   other human's prompt (increment 2); a fuller negotiation UX (counter-offers, tech
   trades) is future work.
