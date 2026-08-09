@@ -1,0 +1,45 @@
+# One ROTP multiplayer game per systemd instance.
+#
+#   systemctl enable --now rotp-game@1
+#
+# The instance name (%i) is the game number, 1..N. Each instance reads its own
+# /etc/rotp/game-%i.env for the port and game settings, and gets its own save
+# directory, so games never collide over ports or save files.
+#
+# The engine holds the whole galaxy in memory and one JVM hosts one game, so
+# capacity is bounded by RAM: at the -Xmx2g below, an Oracle Cloud Always Free
+# Ampere A1 VM (4 OCPU / 24 GB) comfortably runs six.
+
+[Unit]
+Description=ROTP multiplayer game %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rotp
+Group=rotp
+EnvironmentFile=/etc/rotp/game-%i.env
+WorkingDirectory=/opt/rotp
+ExecStart=/usr/bin/java -Xmx2g -jar /opt/rotp/rotp.jar --server \
+    port=${ROTP_PORT} \
+    players=${ROTP_PLAYERS} \
+    size=${ROTP_SIZE} \
+    timer=${ROTP_TIMER} \
+    bind=${ROTP_BIND} \
+    savedir=/var/lib/rotp/game-%i
+
+# a crashed game restarts and clients re-claim their empires with their session
+# tokens; a *new* game is only started by the operator, so restart is safe
+Restart=on-failure
+RestartSec=5
+
+# the process only ever needs its own save directory
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/rotp/game-%i
+
+[Install]
+WantedBy=multi-user.target

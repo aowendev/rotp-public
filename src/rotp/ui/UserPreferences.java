@@ -199,6 +199,10 @@ public class UserPreferences {
     }
     public static String saveDir()          { return saveDir; }
     public static void saveDir(String s)    { saveDir = s; save(); }
+    /** set the save directory for this process only, without rewriting the shared
+     * preferences file — several headless servers on one host each need their own
+     * save dir, and they must not race over that file (see ServerMain savedir=) */
+    public static void saveDirForThisProcess(String s) { saveDir = s; }
     public static String saveDirStr()       {
         if (saveDir.isEmpty())
             return SAVEDIR_DEFAULT;

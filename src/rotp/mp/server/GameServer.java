@@ -133,7 +133,17 @@ public class GameServer extends WebSocketServer {
     }
 
     public GameServer(int port, int humanSlots, String galaxySize, String loadFile) {
-        super(new InetSocketAddress(port));
+        this(null, port, humanSlots, galaxySize, loadFile);
+    }
+
+    /**
+     * @param bindHost the interface to listen on, or null for all of them. Set it
+     *        to 127.0.0.1 when a reverse proxy in front of the server terminates
+     *        TLS, so the plain-text port is not reachable from the internet.
+     */
+    public GameServer(String bindHost, int port, int humanSlots, String galaxySize, String loadFile) {
+        super((bindHost == null || bindHost.isEmpty())
+            ? new InetSocketAddress(port) : new InetSocketAddress(bindHost, port));
         this.humanSlots = humanSlots;
         this.galaxySize = galaxySize;
         this.loadFile = loadFile;
@@ -161,6 +171,11 @@ public class GameServer extends WebSocketServer {
     public void stop(int timeout) throws InterruptedException {
         timer.shutdownNow();   // release the turn-timer thread on shutdown
         super.stop(timeout);
+        // Over the internet a browser tab can vanish without a close frame (sleep,
+        // a dropped mobile link, a killed tab). Ping every 30s and drop a silent
+        // connection, so the player lands in `departed` and their session token
+        // can re-claim the empire instead of a ghost holding it.
+        setConnectionLostTimeout(30);
     }
 
     @Override
