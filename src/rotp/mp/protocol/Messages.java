@@ -325,9 +325,27 @@ public final class Messages {
     public static class SaveGame {
         public String name;
     }
-    // TODO: reserve fund transfers (reserve -> colony, and banking a planet's
-    // output into the reserve) are deferred; the TransferReserve command was
-    // prototyped and pulled. Re-add here + in GameServer when we take this up.
+    /**
+     * move BC out of the planetary reserve into one of your colonies. Lossless
+     * (`Empire.allocateReserve`); the colony spends it next turn up to its own
+     * production, and any surplus stays banked on the colony.
+     */
+    public static class TransferReserve {
+        public int systemId;
+        public int amount;      // BC to move; clamped to the reserve on hand
+    }
+
+    /**
+     * the "into the reserve" direction. ROTP has no per-planet manual banking —
+     * the reserve is filled by an empire-wide tax on colony production
+     * (`Empire.addReserve(production * colonyTaxPct)`, banked at 50%). So the
+     * order is a tax rate, not a transfer: `level` percent of production, either
+     * from every colony or only from developed ones.
+     */
+    public static class SetEmpireTax {
+        public int level;               // 0..maxEmpireTaxLevel (percent of production)
+        public boolean onlyDeveloped;   // tax only fully-developed colonies
+    }
 
     /**
      * make a diplomatic offer to a contacted empire. In v1 the target's

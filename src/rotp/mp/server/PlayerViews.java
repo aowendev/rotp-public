@@ -53,6 +53,10 @@ public final class PlayerViews {
         v.totalIncome = emp.totalIncome();
         v.netIncome = emp.netIncome();
         v.maintenanceCost = emp.totalShipMaintenanceCost() + emp.totalStargateCost() + emp.totalMissileBaseCost();
+        v.empireTaxLevel = emp.empireTaxLevel();
+        v.maxEmpireTaxLevel = emp.maxEmpireTaxLevel();
+        v.empireTaxOnlyDeveloped = emp.empireTaxOnlyDeveloped();
+        v.empireTaxRevenue = emp.empireTaxRevenue();
         for (Empire e : gal.empires()) {
             if ((e != emp) && !emp.hasContact(e))
                 continue;
@@ -138,6 +142,8 @@ public final class PlayerViews {
         c.factories = col.industry().factories();
         c.bases = col.defense().bases();
         c.production = col.production();
+        c.reserveIncome = col.reserveIncome();
+        c.maxReserveNeeded = col.maxReserveNeeded();
         rotp.model.ships.Design d = col.shipyard().design();
         c.shipyardDesign = (d == null) ? null : d.name();
         c.buildLimit = col.shipyard().buildLimit();

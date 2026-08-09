@@ -279,6 +279,10 @@ public class GameServer extends WebSocketServer {
             send(conn, result("saveGame", false, "Game not started"));
             return;
         }
+        else if (msg instanceof Messages.TransferReserve)
+            handleCommand(conn, "transferReserve", (Messages.TransferReserve) msg);
+        else if (msg instanceof Messages.SetEmpireTax)
+            handleCommand(conn, "setEmpireTax", (Messages.SetEmpireTax) msg);
         if (turnRunning) {
             send(conn, result("saveGame", false, "Turn is resolving; try again in a moment"));
             return;
@@ -969,6 +973,10 @@ public class GameServer extends WebSocketServer {
         int sum = 0;
         for (int a : alloc) {
             if (a < 0)
+            else if (cmd instanceof Messages.TransferReserve)
+                err = applyTransferReserve(emp, (Messages.TransferReserve) cmd);
+            else if (cmd instanceof Messages.SetEmpireTax)
+                err = applySetEmpireTax(emp, (Messages.SetEmpireTax) cmd);
                 return;
             sum += a;
         }
@@ -1470,6 +1478,35 @@ public class GameServer extends WebSocketServer {
             return "No contact with that empire";
         if (ev.embassy().anyWar())
             return "Already at war";
+    /** reserve -> colony. Lossless; the colony spends what it can next turn and
+     * keeps the surplus banked (Colony.maxReserveIncome caps a turn's spend at
+     * the colony's own production). */
+    private String applyTransferReserve(Empire emp, Messages.TransferReserve cmd) {
+        StarSystem sys = galaxy().system(cmd.systemId);
+        if (sys == null)
+            return "No such system";
+        if ((sys.empire() != emp) || !sys.isColonized())
+            return "Not your colony";
+        if (cmd.amount <= 0)
+            return "Amount must be positive";
+        if (cmd.amount > emp.totalReserve())
+            return "Only "+Math.round(emp.totalReserve())+" BC in reserve";
+        emp.allocateReserve(sys.colony(), cmd.amount);
+        return null;
+    }
+
+    /** colony output -> reserve. ROTP banks into the reserve only through the
+     * empire-wide tax rate (see Messages.SetEmpireTax), so this is the "add to
+     * reserve" order. */
+    private String applySetEmpireTax(Empire emp, Messages.SetEmpireTax cmd) {
+        if ((cmd.level < 0) || (cmd.level > emp.maxEmpireTaxLevel()))
+            return "Tax rate must be 0-"+emp.maxEmpireTaxLevel()+"%";
+        if (cmd.onlyDeveloped != emp.empireTaxOnlyDeveloped())
+            emp.toggleEmpireTaxOnlyDeveloped();
+        emp.empireTaxLevel(cmd.level);
+        return null;
+    }
+
         if (ev.embassy().alliance() || ev.embassy().unity())
             return "Break the alliance before declaring war";
         galaxy().empire(cmd.empireId).diplomatAI().receiveDeclareWar(emp);

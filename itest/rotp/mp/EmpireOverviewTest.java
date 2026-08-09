@@ -61,7 +61,7 @@ public class EmpireOverviewTest {
 
     @Test
     void panelLoadsOverviewFromView() {
-        EmpirePanel panel = new EmpirePanel();
+        EmpirePanel panel = new EmpirePanel(order -> { });
         PlayerView v = new PlayerView();
         v.empireId = 0;
         v.tech = new PlayerView.TechDto();

@@ -42,6 +42,11 @@ public final class PlayerView {
     public float totalIncome;      // gross income this turn (planetary + trade)
     public float netIncome;        // income minus ship/stargate/missile-base maintenance
     public float maintenanceCost;  // total upkeep (ship + stargate + missile bases)
+    // the reserve's "in" direction: an empire-wide tax on colony production
+    public int empireTaxLevel;         // percent of production banked (0 = off)
+    public int maxEmpireTaxLevel;      // highest rate the engine allows
+    public boolean empireTaxOnlyDeveloped;  // tax developed colonies only
+    public float empireTaxRevenue;     // BC the current rate banks per turn
 
     /** empires this player has contacted (plus itself) */
     public List<EmpireDto> empires = new ArrayList<>();
@@ -117,6 +122,8 @@ public final class PlayerView {
         public float bases;
         public int maxBases;          // target missile-base count (defense builds up to this)
         public float production;      // BC produced this turn
+        public float reserveIncome;   // reserve BC banked on this colony, awaiting spend
+        public float maxReserveNeeded;// further reserve BC it could spend next turn
         public String shipyardDesign;
         public int buildLimit;        // 0 = no limit
         public int transportSize;     // pending (unlaunched) outgoing transports

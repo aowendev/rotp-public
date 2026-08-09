@@ -109,9 +109,15 @@ when it's confirmed against the Mac port, mark it — that's the gold standard h
   `Empire.allocateReserve(col, amt)` moves reserve→colony **losslessly**;
   `Empire.addReserve(amt)` banks at **50%** (`addToTreasury(amt/2)`). ROTP's own UI
   only offers reserve→colony (`TransferReserveUI`), no manual "bank income."
-- **Divergence:** interaction model differs (ROTP auto-fills, no manual add). This is
-  exactly why our Empire-Overview "add to reserve" is deferred (see the TODO in
-  `EmpirePanel` / handoff) — it has no faithful ROTP mechanic yet.
+- **Divergence:** interaction model differs (ROTP auto-fills, no manual add).
+- **Resolved for multiplayer (Phase 4, 2026-08-09).** The "add to reserve" direction has
+  a faithful ROTP mechanic after all — it is just not a *transfer*. `Empire.nextTurn`
+  banks `production × colonyTaxPct()` from every taxed colony, and `colonyTaxPct` comes
+  from the empire-wide `empireTaxLevel` (0-20%, optionally developed colonies only). So
+  our protocol exposes **out** as a transfer (`transferReserve{systemId, amount}`) and
+  **in** as a rate (`setEmpireTax{level, onlyDeveloped}`). The 50% banking loss is the
+  engine's, left as-is. Still divergent from the Mac port's symmetric pay-in/draw-out
+  Planets window; revisit if the guide gives MOO1's actual banking rules.
 
 ### 5. Research cost — **pending guide**
 - **MOO1:** OSG has a research-cost table by tech level. *(Pending guide: the table.)*
