@@ -116,10 +116,13 @@ public class GameServer extends WebSocketServer {
      * Kept as a constant so the lobby can offer races before any game options
      * object exists.
      */
+        /** issued on join; the stable identity a reconnecting client re-claims with */
+        String token = java.util.UUID.randomUUID().toString();
     private static final String[] STARTING_RACE_IDS = {
         "RACE_HUMAN", "RACE_ALKARI", "RACE_SILICOID", "RACE_MRRSHAN", "RACE_KLACKON",
         "RACE_MEKLAR", "RACE_PSILON", "RACE_DARLOK", "RACE_SAKKRA", "RACE_BULRATHI"
     };
+        boolean host = false;   // may start the game from the lobby
 
     public GameServer(int port, int humanSlots) {
         this(port, humanSlots, null, null);
@@ -346,14 +349,15 @@ public class GameServer extends WebSocketServer {
         p.empireId = players.size();   // slot order for now
         p.raceId = firstFreeRace();    // a distinct race per player by default
         players.put(conn, p);
-        if (hostConn == null)
+        if (hostConn == null) {
             hostConn = conn;   // the first player to join is the host
         System.out.println("[server] "+p.name+" joined as empire "+p.empireId
-            + (conn == hostConn ? " (host)" : "") + ", race "+p.raceId);
+            + (p.host ? " (host)" : "") + ", race "+p.raceId);
 
         Messages.Joined joined = new Messages.Joined();
         joined.empireId = p.empireId;
-        joined.host = (conn == hostConn);
+        joined.host = p.host;
+        joined.sessionToken = p.token;
         send(conn, Protocol.encode(joined));
         send(conn, Protocol.encode(raceOptions()));
         send(conn, Protocol.encode(sizeOptions()));
@@ -361,6 +365,20 @@ public class GameServer extends WebSocketServer {
         broadcastLobby(p.name+" joined");
 
         // auto-start once every human slot is filled (ruleset default AI count)
+        // A session token re-claims the same empire regardless of display name,
+        // and works before the game starts as well as after — the browser cases
+        // (refresh, sleep/wake, a dropped socket the server has not noticed yet)
+        // all look like a brand-new connection carrying an old token.
+        Player claimed = claimByToken(hello.sessionToken);
+        if (claimed != null) {
+            claimed.name = name;      // a client may come back under a new name
+            if (gameStarted)
+                reconnect(conn, claimed);
+            else
+                rejoinLobby(conn, claimed);
+            return;
+        }
+
         if (players.size() == humanSlots)
             beginStart(-1);
     }
@@ -375,7 +393,7 @@ public class GameServer extends WebSocketServer {
     private void reconnect(WebSocket conn, Player p) {
         p.ready = false;              // a fresh turn; don't carry a stale ready flag
         players.put(conn, p);
-        if (p.empireId == 0)
+        if (p.host || (p.empireId == 0))
             hostConn = conn;          // keep the host pointer on a live connection
         System.out.println("[server] "+p.name+" reconnected as empire "+p.empireId);
 
@@ -388,6 +406,7 @@ public class GameServer extends WebSocketServer {
             synchronized (gameLock) {
                 send(conn, Protocol.encode(PlayerViews.build(emp)));
             }
+                p.host = (p.empireId == 0);
         }
         // refresh everyone's ready counts now that the player is back
         broadcastTurnStatus(p.name+" reconnected");
@@ -406,6 +425,8 @@ public class GameServer extends WebSocketServer {
         if (players.isEmpty()) {
             send(conn, error("No players present"));
             return;
+        }
+            p.host = true;
         }
         // the host may override the galaxy size chosen at launch
         if ((msg.galaxySize != null) && !msg.galaxySize.isEmpty()) {
@@ -427,6 +448,63 @@ public class GameServer extends WebSocketServer {
         }
         // the host may set (or disable) the turn timer for the game
         if (msg.turnTimerSeconds >= 0) {
+    /**
+     * Find the player this session token belongs to and detach it from whatever
+     * connection (if any) still holds it, so the caller can re-attach it to the
+     * new one. Covers both shapes of a browser reconnect: the old socket is
+     * already closed (the player sits in {@code departed}), or it is still open
+     * because the server has not seen the close yet (a refresh or a network
+     * change) — in that case the stale socket is evicted and closed, since only
+     * one connection may drive an empire. Runs under the handleHello monitor.
+     */
+    private Player claimByToken(String token) {
+        if ((token == null) || token.isEmpty())
+            return null;
+        for (java.util.Iterator<Map.Entry<String, Player>> it = departed.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<String, Player> e = it.next();
+            if (token.equals(e.getValue().token)) {
+                it.remove();
+                return e.getValue();
+            }
+        }
+        for (java.util.Iterator<Map.Entry<WebSocket, Player>> it = players.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<WebSocket, Player> e = it.next();
+            if (!token.equals(e.getValue().token))
+                continue;
+            WebSocket stale = e.getKey();
+            it.remove();
+            if (stale == hostConn)
+                hostConn = null;
+            System.out.println("[server] "+e.getValue().name+" reconnecting; closing the stale connection");
+            stale.close();
+            return e.getValue();
+        }
+        return null;
+    }
+
+    /**
+     * A token-bearing client that comes back *before* the game starts keeps its
+     * lobby slot (empire id, race pick, host role) instead of consuming another
+     * one — otherwise a couple of browser refreshes would fill the lobby.
+     * Runs under the handleHello monitor.
+     */
+    private void rejoinLobby(WebSocket conn, Player p) {
+        players.put(conn, p);
+        if (p.host)
+            hostConn = conn;
+        System.out.println("[server] "+p.name+" rejoined the lobby as empire "+p.empireId);
+
+        Messages.Joined joined = new Messages.Joined();
+        joined.empireId = p.empireId;
+        joined.host = p.host;
+        joined.sessionToken = p.token;
+        send(conn, Protocol.encode(joined));
+        send(conn, Protocol.encode(raceOptions()));
+        send(conn, Protocol.encode(sizeOptions()));
+        send(conn, Protocol.encode(difficultyOptions()));
+        broadcastLobby(p.name+" rejoined");
+    }
+
             setTurnTimer(msg.turnTimerSeconds);
             System.out.println("[server] host set turn timer "
                 + (msg.turnTimerSeconds > 0 ? msg.turnTimerSeconds + "s" : "off"));
@@ -498,6 +576,15 @@ public class GameServer extends WebSocketServer {
             opts.sizes.add(info);
         }
         opts.selectedId = (galaxySize != null) ? galaxySize : new MOO1GameOptions().selectedGalaxySize();
+        // (re)issue the session token first — a client joining a resumed save has
+        // never seen one, and GameStarted right after takes the client out of the
+        // lobby, so the Joined here only carries identity
+        Messages.Joined joined = new Messages.Joined();
+        joined.empireId = p.empireId;
+        joined.host = p.host;
+        joined.sessionToken = p.token;
+        send(conn, Protocol.encode(joined));
+
         return opts;
     }
 

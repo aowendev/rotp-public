@@ -30,6 +30,14 @@ public final class Messages {
     public static class Hello {
         public int version;
         public String playerName;
+        /**
+         * the token from a previous {@link Joined}, replayed to re-claim the same
+         * empire. A browser reconnects constantly (refresh, sleep, flaky network)
+         * and may not keep a stable display name, so the token — not the name — is
+         * the identity the server matches on. Null/empty on a first join; the
+         * server falls back to name matching for clients that carry no token.
+         */
+        public String sessionToken;
     }
 
     /** server -> client: lobby roster, sent on every change */
@@ -77,6 +85,9 @@ public final class Messages {
      * to add (-1 = use the ruleset default).
      */
     public static class StartGame {
+        /** store this and send it back in {@link Hello#sessionToken} to re-claim
+         * this empire after a disconnect or refresh */
+        public String sessionToken;
         public int aiOpponents = -1;
         /** chosen galaxy size (IGameOptions.SIZE_*); null keeps the server default */
         public String galaxySize;

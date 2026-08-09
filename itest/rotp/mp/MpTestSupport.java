@@ -144,24 +144,37 @@ public final class MpTestSupport {
         private final WebSocketClient ws;
         public volatile PlayerView lastView;
 
+        private final String sessionToken;
         public Client(int port, String name) throws Exception {
             this.name = name;
+        /** the token the server issued this connection (see Messages.Joined) */
+        public volatile String issuedToken;
             this.ws = new WebSocketClient(URI.create("ws://localhost:"+port)) {
                 @Override public void onOpen(ServerHandshake h) {
                     Messages.Hello hello = new Messages.Hello();
                     hello.version = Protocol.VERSION;
+            this(port, name, null);
+        }
+
+        /** connect replaying a session token, as a reconnecting browser client does */
+        public Client(int port, String name, String sessionToken) throws Exception {
                     hello.playerName = Client.this.name;
                     send(Protocol.encode(hello));
                 }
                 @Override public void onMessage(String message) {
                     Object msg = Protocol.decode(message);
                     if (msg instanceof PlayerView) views.offer((PlayerView) msg);
+            this.sessionToken = sessionToken;
                     else if (msg instanceof Messages.CommandResult) results.offer((Messages.CommandResult) msg);
                     else if (msg instanceof Messages.DiploReply) replies.offer((Messages.DiploReply) msg);
                     else if (msg instanceof Messages.DesignCatalog) catalogs.offer((Messages.DesignCatalog) msg);
                     else if (msg instanceof Messages.Lobby) lobbies.offer((Messages.Lobby) msg);
                     else if (msg instanceof Messages.GameStarted) starts.offer((Messages.GameStarted) msg);
-                    else if (msg instanceof Messages.Joined) joins.offer((Messages.Joined) msg);
+                    else if (msg instanceof Messages.Joined) {
+                        issuedToken = ((Messages.Joined) msg).sessionToken;
+                        joins.offer((Messages.Joined) msg);
+                    }
+                    hello.sessionToken = Client.this.sessionToken;
                     else if (msg instanceof Messages.SizeOptions) sizeOptions.offer((Messages.SizeOptions) msg);
                     else if (msg instanceof Messages.DifficultyOptions) difficultyOptions.offer((Messages.DifficultyOptions) msg);
                     else if (msg instanceof Messages.ColonyPreview) colonyPreviews.offer((Messages.ColonyPreview) msg);
