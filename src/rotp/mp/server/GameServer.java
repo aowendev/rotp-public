@@ -211,8 +211,15 @@ public class GameServer extends WebSocketServer {
             // once the game is running, hold a dropped player's slot so they can
             // reconnect to the same empire (matched by name in handleHello).
             // Pre-start the slot is simply freed for someone else.
-            if ((p != null) && gameStarted)
+            if ((p != null) && gameStarted) {
                 departed.put(p.name, p);
+                // hand the empire to the AI until they come back. Otherwise it does
+                // not coast, it stalls: nothing reallocates research, designs ships,
+                // moves fleets or sends transports while they are away.
+                Empire emp = galaxy().empire(p.empireId);
+                if (emp != null)
+                    emp.awayFromKeyboard(true);
+            }
             if (conn == hostConn)
                 hostConn = null;
         }
@@ -232,12 +239,32 @@ public class GameServer extends WebSocketServer {
 
     @Override
     public void onMessage(WebSocket conn, String message) {
+        try {
+            dispatch(conn, message);
+        }
+        catch (RuntimeException e) {
+            // Nothing a client sends may take the server down. Only the decode was
+            // guarded before, so a null field or a short array in any handler threw
+            // straight into the WebSocket read loop. A browser client under
+            // development *will* send messages the Java client never does, and the
+            // resulting bug has to be visibly the client's, not a dead server.
+            System.out.println("[server] error handling message: " + e);
+            e.printStackTrace();
+            send(conn, error("Server error handling that request: " + e));
+        }
+    }
+
+    private void dispatch(WebSocket conn, String message) {
         Object msg;
         try {
             msg = Protocol.decode(message);
         }
         catch (Exception e) {
             send(conn, error("Malformed message: "+e.getMessage()));
+            return;
+        }
+        if (msg == null) {
+            send(conn, error("Unrecognized message"));
             return;
         }
         if (msg instanceof Messages.Hello)
@@ -359,6 +386,32 @@ public class GameServer extends WebSocketServer {
             return;
         }
         String name = (hello.playerName == null || hello.playerName.isEmpty()) ? "Player" : hello.playerName;
+
+        // A hello on a connection that already has a player is a repeat, not a new
+        // joiner. It used to fall through to the "game is full" branch below and
+        // hang up on a player who was happily connected — a browser client that
+        // retries its handshake would simply be dropped. Re-send their identity and
+        // carry on.
+        Player existing = players.get(conn);
+        if (existing != null) {
+            Messages.Joined joined = new Messages.Joined();
+            joined.empireId = existing.empireId;
+            joined.host = existing.host;
+            joined.sessionToken = existing.token;
+            send(conn, Protocol.encode(joined));
+            if (gameStarted) {
+                Empire emp = galaxy().empire(existing.empireId);
+                if (emp != null) {
+                    Messages.GameStarted gs = new Messages.GameStarted();
+                    gs.empireId = existing.empireId;
+                    send(conn, Protocol.encode(gs));
+                    synchronized (gameLock) {
+                        send(conn, Protocol.encode(PlayerViews.build(emp)));
+                    }
+                }
+            }
+            return;
+        }
 
         // A session token re-claims the same empire regardless of display name,
         // and works before the game starts as well as after — the browser cases
@@ -493,6 +546,9 @@ public class GameServer extends WebSocketServer {
     private void reconnect(WebSocket conn, Player p) {
         p.ready = false;              // a fresh turn; don't carry a stale ready flag
         players.put(conn, p);
+        Empire returning = galaxy().empire(p.empireId);
+        if (returning != null)
+            returning.awayFromKeyboard(false);   // the human has the helm again
         if (p.host || (p.empireId == 0))
             hostConn = conn;          // keep the host pointer on a live connection
         System.out.println("[server] "+p.name+" reconnected as empire "+p.empireId);
@@ -905,18 +961,33 @@ public class GameServer extends WebSocketServer {
             broadcastViews();
             checkGameOver();
         }
-        finally {
-            turnRunning = false;
+        catch (RuntimeException e) {
+            // A turn that throws must not take the game with it. Everything after
+            // this method used to be skipped when it did — including the status
+            // broadcast that re-enables Next Turn — so one bad turn left every
+            // client stuck on "resolving" forever, with no way back short of a
+            // restart. Log it, tell the players, and let the game continue.
+            System.out.println("[server] TURN FAILED: " + e);
+            e.printStackTrace();
+            broadcastAll(Protocol.encode(error("The server hit an error resolving this turn; "
+                + "the game continues, but something may be wrong.")));
         }
-        // must run after turnRunning is cleared: this status reports processing,
-        // and the client re-enables the Next Turn button only when processing is
-        // false. Broadcasting it while turnRunning was still true left the button
-        // stuck disabled on every turn after the first.
-        if (gameEnded)
-            cancelTurnTimer();
-        else
-            armTurnTimer();   // open the next turn's deadline
-        broadcastTurnStatus(gameEnded ? "Game over" : "Awaiting orders");
+        finally {
+            // this block must run for *any* throwable, because it is what unsticks
+            // the clients: the status reports processing, and Next Turn re-enables
+            // only when it reads false
+            turnRunning = false;
+            try {
+                if (gameEnded)
+                    cancelTurnTimer();
+                else
+                    armTurnTimer();   // open the next turn's deadline
+                broadcastTurnStatus(gameEnded ? "Game over" : "Awaiting orders");
+            }
+            catch (RuntimeException e) {
+                System.out.println("[server] could not broadcast end-of-turn status: " + e);
+            }
+        }
     }
 
     // ---- orders ----

@@ -203,6 +203,10 @@ public final class MpTestSupport {
 
         public void raw(Object msg) { ws.send(Protocol.encode(msg)); }
 
+        /** send an arbitrary string, bypassing the protocol encoder — for testing
+         * what the server does with input no well-behaved client would produce */
+        public void rawText(String text) { ws.send(text); }
+
         public PlayerView awaitView() throws Exception {
             PlayerView v = views.poll(180, TimeUnit.SECONDS);
             if (v == null) throw new RuntimeException(name+": timed out waiting for view");

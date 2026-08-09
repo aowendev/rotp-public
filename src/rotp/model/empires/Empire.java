@@ -107,6 +107,7 @@ public final class Empire implements Base, NamedObject, Serializable {
     private boolean extinct = false;
     private boolean galacticAlliance = false;
     private boolean remoteHuman = false;   // multiplayer: controlled by a remote human
+    private transient boolean awayFromKeyboard = false;  // multiplayer: dropped; AI plays for them
     private int lastCouncilVoteEmpId = Empire.NULL_ID;
     private Colony.Orders priorityOrders = Colony.Orders.NONE;
     private int bannerColor;
@@ -423,7 +424,23 @@ public final class Empire implements Base, NamedObject, Serializable {
     // decisions must not be overwritten by the AI - gate those on decidedByAI()
     public boolean isRemoteHuman()       { return remoteHuman; }
     public void makeRemoteHuman()        { remoteHuman = true; }
-    public boolean decidedByAI()         { return isAIControlled() && !remoteHuman; }
+    /**
+     * Multiplayer: this remote human has dropped, so the AI plays their empire
+     * until they reconnect. Without it a disconnected player's empire does not
+     * coast — it *stalls*: decidedByAI() is false whether or not they are
+     * connected, so nothing reallocates research, designs ships, moves fleets or
+     * sends transports, and the empire falls behind for every turn they are away.
+     *
+     * Transient on purpose. It describes a live connection, which no save can
+     * carry: a game reloaded from disk has nobody connected yet, and every human
+     * empire is reclaimed through the normal join path. Note it must NOT be done
+     * by clearing `remoteHuman` — that field is what `resumeSavedGame` reads to
+     * find the human slots, so a player who happened to be away when the game was
+     * saved would come back to find their empire had become an AI.
+     */
+    public boolean awayFromKeyboard()          { return awayFromKeyboard; }
+    public void awayFromKeyboard(boolean b)    { awayFromKeyboard = b; }
+    public boolean decidedByAI()         { return isAIControlled() && (!remoteHuman || awayFromKeyboard); }
     public Color color()                 { return options().color(bannerColor); }
     public int shipColorId()             { return colorId(); }
     @Override

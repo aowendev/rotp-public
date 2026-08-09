@@ -43,10 +43,11 @@ counter-offers, aid, threats), per-empire multi-human outcomes, and the bombardm
 choice. **Ship combat auto-resolves by decision** (2026-08-09) — a tactical battle would
 stall every other player — so only the decisions *around* combat are on the wire.
 **Four items remain open**: the steal-tech and sabotage-target choices, joint war offers,
-and a written protocol spec. Hosting moved to **Phase 6** (Scaleway for initial testing;
+and a written protocol spec — plus **server error-hardening** (user, 2026-08-09: anything
+that could cause an error on the server must be resolved before Phase 5). Hosting moved to **Phase 6** (Scaleway for initial testing;
 it also owes a front end that spins up a JVM per game). **Phase 5 is a separate private
 repo**, not under the ROTP licence.
-**101 tests green, 0 skips (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
+**108 tests green, 1 skip (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
 
 ## Where we are
 
@@ -69,7 +70,7 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **101 JUnit integration tests, green, 0 skips (incl. 2-human end-to-end).**
+projections and per-category locks**. **108 JUnit integration tests green, 1 skip (incl. 2-human end-to-end).**
 
 **Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is complete for v1** — all seven
 increments (interactive tech selection; incoming diplomacy; council vote; colonize choice;
@@ -582,7 +583,7 @@ bulletins ARE carried.)
 end-to-end tested BEFORE starting the browser client (Phase 5)** — a fully proven,
 per-empire-correct backend means any bug found while building the browser client is
 purely a client bug. **All four items are now DONE (2026-08-09).** (Test count has since
-moved on with Phase 4 — 101 green, 0 skips.)
+moved on with Phase 4 — 108 green, 1 skip.)
 - **[1] Multi-human alert routing (DONE).** `GameAlert` base gained a `recipient` empire
   (defaults to `player()` when unset, so single-player/desktop are unchanged); each alert's
   `description()` frames from `recipient().sv`, and `create()` returns the instance so call
@@ -828,6 +829,28 @@ are strategy, not tactics, and a human must make them:
   so the decision is the human's; only the resulting battle auto-resolves. Worth
   confirming in play (`mp-test-scenarios.md` §2.6).
 
+**Server error-hardening (user requirement, 2026-08-09): nothing a client sends may
+cause a server error.** Same reason as everything else in this phase — a browser client is
+written against the protocol by someone who cannot see the server, and will send things
+the Java client never does. A dead or wedged server is indistinguishable from a protocol
+misunderstanding, and it takes every other player's game down with it. Done so far:
+- Every message handler is now wrapped (`onMessage` → `dispatch`). Only the *decode* was
+  guarded before, so a null field or short array in any handler threw into the WebSocket
+  read loop.
+- A failed turn no longer freezes the game. `runTurn` had `try/finally` with no `catch`,
+  so an exception skipped everything after it — including the status broadcast that
+  re-enables Next Turn — and every client sat on "resolving" forever. The end-of-turn
+  status broadcast now happens in the `finally`, for any throwable.
+- **Bug found by the new tests: a repeat `hello` on an established connection closed
+  that connection.** It fell through to the "game is full" branch and hung up on a player
+  who was already happily connected; a browser retrying its handshake would just be
+  dropped. It now re-sends identity and state.
+
+Tests: `ServerRobustnessTest` — junk on the wire, null/out-of-range fields across the
+command set, and out-of-order messages; each asserts the server still *resolves turns*
+afterwards, not merely that it replied. Still to audit: long-running fuzzing, oversized
+payloads, and many-client churn.
+
 **Protocol specification (license-driven, new).** Phase 5 is a **separate private repo,
 not under the ROTP licence** (see below). For that client to be a non-derivative work it
 must be written from a *documented wire protocol*, not by reading or porting the GPL Java
@@ -897,14 +920,21 @@ ready tally; plus the pure rules.
 2 humans + 3 AI, colonize prompts fired for both, and turns resolved to 33. The rest of
 the human-vs-human surface is still unexercised — see **`mp-test-scenarios.md`**.
 
-**OPEN QUESTION surfaced by that game.** Bob dropped and the game advanced ~31 turns
-without him, because `onClose` calls `maybeRunTurn()` so a departed player cannot stall
-the turn. His empire ran on AI the whole time and he would reconnect having missed every
-decision. Defensible for a brief blip, harsh for anything longer — and it makes the turn
-timer redundant, since the timer exists precisely to stop an absent player stalling a
-game. Options: pause while a human is disconnected *unless* a turn timer is set
-(recommended); a grace period of N seconds; or leave it and default the timer on in the
-lobby. Undecided.
+**RESOLVED (user, 2026-08-09): a dropped player's empire is played by the AI until they
+reconnect.** The observed behaviour was worse than it first appeared, and worse than
+reported at the time: the empire did not "run on AI", it **stalled**. `decidedByAI()` is
+false for a remote human whether or not they are connected, so for all 31 turns Bob was
+away nothing reallocated his research, designed ships, commanded fleets or sent
+transports — the empire sat frozen on its last orders while the galaxy moved on.
+
+`Empire.awayFromKeyboard` (transient) now makes `decidedByAI()` true while a remote human
+is disconnected; `GameServer.onClose` sets it and `reconnect` clears it. Deliberately a
+*separate* flag rather than clearing `remoteHuman`: that field is what `resumeSavedGame`
+reads to find the human slots, so a player who happened to be away when the game was saved
+would come back to find their empire had become an AI. Transient because it describes a
+live connection, which no save can carry. No effect on single-player, where `remoteHuman`
+is false and `decidedByAI()` keeps its original meaning exactly.
+Tests: `AwayFromKeyboardTest` (2).
 
 ## Then — Phase 5: the browser client (SEPARATE PRIVATE REPO)
 
@@ -1048,8 +1078,10 @@ game launcher). See design doc §7.
   `pendingTechRequests`, `collectTechRequestPrompt`) and `RacesPanel` (the Audience menu).
 - `itest/rotp/mp/` — integration tests + `MpTestSupport` harness (new:
   `RacesScreenTest`, `ReconnectTest`, `GalaxySizeTest`, `DifficultyTest`,
-  `SaveLoadTest`; Phase 4 added `ReserveTest`, `DeploymentTest`, `TechTradeTest` and
-  `MultiHumanOutcomeTest`).
+  `SaveLoadTest`; Phase 4 added `ReserveTest`, `DeploymentTest`, `TechTradeTest`,
+  `MultiHumanOutcomeTest`, `BombardPromptTest`, `AwayFromKeyboardTest` and
+  `ServerRobustnessTest`). The one skip is BombardPromptTest's main case, which needs a
+  mid-game state a turn-1 galaxy cannot provide.
 - `deploy/` + `docs/deployment.md` — Phase-6 hosting: systemd template unit, per-game env
   file, and the Scaleway / Caddy / TLS runbook with measured per-game sizing.
 - `docs/mp-test-scenarios.md` — the human-vs-human checklist Phase 4 must pass before it

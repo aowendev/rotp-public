@@ -111,12 +111,16 @@ answered by their AI.
 - [ ] **5.2 Orders are rejected while a turn is resolving.**
 - [ ] **5.3 Bob quits and relaunches with the same name** → same empire, current
       turn, able to keep playing.
-- [ ] **5.4 While Bob is away, do turns advance?** They currently do, and 30+
-      turns can pass before he returns. **Decide whether that is what you want** —
-      see the open question in the handoff doc. Worth deliberately observing.
-- [ ] **5.5 Turn timer.** Restart with `timer=60`; a turn should auto-resolve when
+- [ ] **5.4 While Bob is away, the AI plays his empire.** Turns advance without
+      him (a dropped player must not stall the game) and his empire should keep
+      *developing* — research reallocated, ships built, fleets moved — not sit
+      frozen on its last orders. Leave him disconnected for several turns, then
+      reconnect and check his empire actually progressed.
+- [ ] **5.5 On reconnect the human has the helm again.** His next orders stick and
+      are not overwritten by the AI.
+- [ ] **5.6 Turn timer.** Restart with `timer=60`; a turn should auto-resolve when
       someone does not ready, and the client should count down.
-- [ ] **5.6 Kill the server mid-game and restart it.** Without a save the galaxy
+- [ ] **5.7 Kill the server mid-game and restart it.** Without a save the galaxy
       is gone — confirm that is the behaviour you expect before relying on it.
 
 **Cannot be tested with the Java client:** reclaiming an empire under a *different
@@ -124,27 +128,47 @@ name* via session token, and the refresh-takeover case where two connections bri
 hold the same token. The Java client does not persist its token. Both are covered by
 integration tests and are really browser-client concerns.
 
-## 6. Council, save/load, and the long game
+## 6. Try to break the server
 
-- [ ] **6.1 A council convenes** (needs 2/3 of the galaxy colonised — a long game,
+Nothing a client does may error the server — a browser client will send things the
+Java client never does, and a wedged server is indistinguishable from a protocol
+misunderstanding. Automated coverage exists (`ServerRobustnessTest`); these are the
+things a person can do that it cannot.
+
+- [ ] **6.1 Force-quit a client mid-turn**, repeatedly, while the other player
+      keeps playing. The game keeps resolving.
+- [ ] **6.2 Pull the network** on one machine (wifi off) rather than closing
+      cleanly — no close frame is sent, so the server has to notice by heartbeat.
+- [ ] **6.3 Both players ready at the same instant**, repeatedly.
+- [ ] **6.4 Spam clicks** on Next Turn, and on the diplomacy buttons, during turn
+      resolution. Orders should be rejected with a message, not swallowed or fatal.
+- [ ] **6.5 Reconnect both players simultaneously.**
+- [ ] **6.6 Leave a game idle for an hour**, then resume — nothing should have
+      timed out or leaked.
+- [ ] Watch the server's stdout throughout. **Any stack trace is a Phase-4 bug**,
+      even if the game carries on.
+
+## 7. Council, save/load, and the long game
+
+- [ ] **7.1 A council convenes** (needs 2/3 of the galaxy colonised — a long game,
       or force it). Each human is prompted to vote in turn.
-- [ ] **6.2 Ignore a vote prompt** — the convention still closes rather than
+- [ ] **7.2 Ignore a vote prompt** — the convention still closes rather than
       re-convening every turn.
-- [ ] **6.3 Save mid-vote, restart the server with `load=`, both reconnect.** The
+- [ ] **7.3 Save mid-vote, restart the server with `load=`, both reconnect.** The
       open vote survives with the same candidates and tally.
-- [ ] **6.4 Ordinary save/resume.** Host saves (⌘S), server restarts with
+- [ ] **7.4 Ordinary save/resume.** Host saves (⌘S), server restarts with
       `load=<name>`, both players reconnect to their own empires.
 
-## 7. Known gaps — expect these to behave "wrong"
+## 8. Known gaps — expect these to behave "wrong"
 
 Not bugs; unimplemented. Confirm they behave as described so they are not
 mistaken for regressions.
 
-- [ ] **7.1 Stealing technology.** After a successful espionage mission the AI
+- [ ] **8.1 Stealing technology.** After a successful espionage mission the AI
       picks which tech is stolen — you are not offered the choice. MOO1 offers it.
-- [ ] **7.2 Sabotage target.** Likewise chosen for you.
-- [ ] **7.3 Joint war** cannot be proposed at all.
-- [ ] **7.4 Ship combat is never interactive.** Deliberate: a tactical battle
+- [ ] **8.2 Sabotage target.** Likewise chosen for you.
+- [ ] **8.3 Joint war** cannot be proposed at all.
+- [ ] **8.4 Ship combat is never interactive.** Deliberate: a tactical battle
       would stall every other player. Only the decisions around it are yours.
 
 ---
