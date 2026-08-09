@@ -35,10 +35,15 @@ factories sabotaged, tech stolen, spy report, ...) are delivered to the affected
 ALERT notifications, routed per-recipient (works in a 2-human game). Prompts (1-4) ride a
 reusable `Prompts` message. **Backend hardening (2026-08-09) then closed out the multi-human
 gaps as a pre-Phase-5 gate**: per-recipient alert routing, GNN ranking bulletins as NEWS, a
-host turn-timer lobby pick, and a 2-human end-to-end test foundation. **Phase 4 is COMPLETE (2026-08-09)**: reserve fund transfers (both directions), browser-grade reconnection via
-session tokens, contact-via-war notification, a council vote that survives save/load, and
-internet hosting (Oracle Cloud ARM, plain JAR, one JVM per game — `docs/deployment.md`). Includes the fuller diplomacy backend (tech exchange with counter-offers, aid, threats), built
-rather than deferred so no Phase-5 discovery can be a backend bug. **Next: Phase 5 (browser client).**
+host turn-timer lobby pick, and a 2-human end-to-end test foundation. **Phase 4 is IN
+PROGRESS**: landed so far are reserve fund transfers (both directions), browser-grade
+reconnection via session tokens, contact-via-war notification, a council vote that survives
+save/load, the fuller diplomacy backend (tech exchange with counter-offers, aid, threats),
+and per-empire multi-human outcomes. **Still missing** — tactical ship combat, the
+bombard / steal-tech / sabotage choices, joint war, and a written protocol spec; see
+"Then — Phase 4 — what is still missing". Hosting moved to **Phase 6**, which also owes a
+front end that spins up a JVM per game. **Phase 5 is a separate private repo**, not under
+the ROTP licence.
 **101 tests green, 0 skips (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
 
 ## Where we are
@@ -48,8 +53,10 @@ completeness) are complete, and Phase 3 (interactive mid-turn prompts) is comple
 v1** — lobby AI-fill / solo-vs-AI, reconnection, minimal save/load, race / galaxy-size /
 AI-ability picks, and all seven Phase-3 prompt/notification increments are in; the
 remaining color-selection and galaxy-size-option-set items are deferred to the web client
-(Phase 5). **Phase 4 is complete** (reserve transfers, session-token reconnection, contact-via-war,
-save-mid-council-vote, internet hosting, fuller diplomacy — see "Then — Phase 4"). **Next: Phase 5 (browser client).** A game is
+(Phase 5). **Phase 4 is in progress** — reserve transfers, session-token reconnection,
+contact-via-war, save-mid-council-vote, fuller diplomacy and per-empire multi-human outcomes
+have landed; tactical combat, the bombard/steal-tech/sabotage choices, joint war and a written
+protocol spec have not (see "Then — Phase 4"). A game is
 genuinely playable end-to-end over the wire: a headless server runs the real
 game; the DTO client renders every core screen (galaxy map, colony, research,
 fleets & transports, ship design, empire overview) from `PlayerView` and drives
@@ -78,8 +85,9 @@ and the Phase-3 prompt/notification increments are committed on top of it.
 > implementation that proves the protocol; the browser client speaks the same
 > JSON-over-WebSocket protocol. Outstanding items (backend gaps + edge cases + internet
 > hosting) are gathered under **"Then — Phase 4"** as the work to finish before the web
-> client is done — all deferred polish or infra, not blockers; **all six are now done**
-> (2026-08-09). 101 integration tests green
+> client is done. **Superseded (2026-08-09): that original six-item list was not the whole
+> job** — Phase 4 now means *all* game functionality on the wire, and is unfinished. 101
+> integration tests green
 > (run in batches — see the test-env note there).
 
 ## Run it
@@ -108,14 +116,30 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp --server port=8777 load=mysave
 # classic offline single-player still works, unchanged
 java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
 
-# hosted on the internet (Phase 4): build the fat JAR and run one JVM per game.
-# bind=/keystore=/savedir= are the deployment args; see docs/deployment.md.
-mvn package
-java -Xmx2g -jar target/rotp-*.jar --server port=8777 players=2 \
+# TWO MACHINES ON A LAN. `mvn package` builds two jars:
+#   target/rotp-1.04-mp-SNAPSHOT.jar   ~969MB, everything (server + offline game)
+#   target/rotp-client.jar             ~3MB, CLIENT ONLY
+# The client renders from PlayerView JSON and holds no game model, so it needs none
+# of the races/data/images/lang art — copy the 3MB one to the second machine, not
+# the gigabyte. (The server and the offline desktop game DO need the assets.)
+mvn package -DskipTests
+ipconfig getifaddr en0            # the server machine's LAN address, e.g. 192.168.1.4
+
+# machine A (server; no bind= means every interface, so the LAN can reach it)
+java -Xmx2g -jar target/rotp-1.04-mp-SNAPSHOT.jar --server port=8777 players=2 size=small
+# machine A can also play: java -jar target/rotp-client.jar --client host=localhost port=8777 name=Alice
+# machine B (scp target/rotp-client.jar over first)
+java -jar rotp-client.jar --client host=192.168.1.4 port=8777 name=Bob
+# macOS may prompt to allow incoming connections for java on machine A - accept it.
+# The game auto-starts once both human slots are filled.
+
+# hosted on the internet (Phase 6): one JVM per game; bind=/keystore=/savedir= are
+# the deployment args - see docs/deployment.md.
+java -Xmx2g -jar target/rotp-1.04-mp-SNAPSHOT.jar --server port=8777 players=2 \
      bind=127.0.0.1 savedir=/var/lib/rotp/game-1
-# ...and connect to it from another machine (url= takes a full ws:// or wss://
-# URL, so it reaches a game behind a TLS proxy at a path, not just host:port)
-java -jar target/rotp-*.jar --client url=wss://rotp.example.com/game/1 name=Alice
+# ...and connect from anywhere (url= takes a full ws:// or wss:// URL, so it reaches
+# a game behind a TLS proxy at a path, not just host:port)
+java -jar rotp-client.jar --client url=wss://rotp.example.com/game/1 name=Alice
 ```
 
 ## What works (done + tested)
@@ -623,22 +647,27 @@ MP mainly means **broadcasting to every client** (done, including GNN no-fog so 
 un-met empires still fires), while combat/spy `GameAlert`s ARE now routed to the affected
 empire (per-recipient). All of GNN + combat/spy is wired.
 
-## Then — Phase 4 — finish the backend, then the web client (Phase 5)
+## Then — Phase 4 — get *all* game functionality onto the wire
 
-Phase 5 is the browser client. Per the **BACKEND SIGN-OFF** principle (any bug found while
-building the web client should be a client bug, not a backend one), Phase 4 is the bucket
-for **everything still outstanding that must be resolved before the web client is done** —
-the backend/protocol gaps and edge cases carried over from Phases 1–3, plus internet
-hosting. Everything here is deferred polish or infra, not a Phase-1/2/3 blocker; the
-solo-and-AI-on-LAN game is fully playable and tested today.
+Phase 4 ends when a remote human can make **every decision the desktop game lets a local
+human make**. That is the bar, because Phase 5 is purely a browser client speaking this
+protocol: if the client reaches for something the protocol doesn't carry, the bug is
+server-side and the sign-off is worthless. Anything still auto-resolved by the AI on a
+remote human's behalf is Phase-4 work, not Phase-5 polish.
 
-**STATUS (2026-08-09): all six Phase-4 items are DONE** — reserve transfers, browser-grade
-reconnection, contact-via-war, save-mid-council-vote, internet hosting, and the fuller
-diplomacy backend. The last of those was marked *conditional* here ("only if the web client
-wants full MOO diplomacy") and was **built rather than deferred, by decision**: deferring
-backend work into Phase 5 breaks the sign-off guarantee above, because a web client that
-reaches for a missing feature hits a *server* gap, not a client bug. Treat every remaining
-"conditional" backend item the same way. **Phase 5 (browser client) is next.**
+**STATUS (2026-08-09): the six items originally listed here are done — but Phase 4 is NOT
+complete.** Reserve transfers, browser-grade reconnection, contact-via-war,
+save-mid-council-vote, and the fuller diplomacy backend all landed; the hosting work has
+**moved to Phase 6**. The original list was never the whole job.
+
+> **PHASE 4'S REAL DEFINITION OF DONE (user, 2026-08-09): every piece of game
+> functionality is on the wire.** Not "the items someone wrote down". Phase 5 is *purely*
+> a new browser client talking to what Phase 4 built, so **any bug found in Phase 5 must
+> be conclusively a client bug** — which only holds if there is nothing left for the
+> client to reach for. Anything a human can decide in the desktop game, a remote human
+> must be able to decide over the protocol.
+
+See **"Then — Phase 4 — what is still missing"** for the outstanding list.
 
 **Backend / protocol — resolve before the web client is complete:**
 - **Reserve fund transfers — DONE (2026-08-09).** Both directions. **Out:** `transferReserve
@@ -749,6 +778,47 @@ reaches for a missing feature hits a *server* gap, not a client bug. Treat every
   served from a PKCS12 keystore, and the bad-keystore path failing before it listens.
   Tests: `DeploymentTest` (3).
 
+### Then — Phase 4 — what is still missing
+
+Found by auditing the engine for decisions a *local* human makes that a remote human
+currently cannot. Everything here is a Phase-4 blocker under the definition above.
+
+**Queued turn-notifications the server does not yet convert into prompts.** These are
+the *same shape* as COLONIZE / INCOMING_DIPLOMACY, which are already done — the engine
+queues a notification, `collectPostTurnPrompts` turns it into a prompt, a command
+resolves it. Tractable, and the pattern is proven:
+- **`StealTechNotification`** — after a successful espionage mission, MOO1 lets you pick
+  *which* technology to steal. A remote human never sees the choice.
+- **`SabotageNotification`** — pick the sabotage target (which colony's bases/factories).
+- **`BombardSystemNotification`** — decide whether to bombard a planet you hold orbit
+  over. Currently auto-resolved, which in a human-vs-human game means the AI decides
+  whether to glass another player's world.
+
+**Diplomacy:**
+- **Joint war offers** — `receiveOfferJointWar` / `receiveCounterJointWar` and
+  `DiplomacyJointWarMenu` have no protocol equivalent. The one audience action left.
+
+**The big one — tactical ship combat.** `ShipCombatManager` runs the interactive grid
+only when a stack `isPlayerControlled()`, which is never true on the server, so **every
+battle auto-resolves for everyone**. In MOO1 combat is a screen you play: move stacks,
+fire, retreat. This was a deliberate v1 simplification (design doc §"Turn model", citing
+MOO2/MOO3 precedent) and is by far the largest remaining subsystem — a combat grid,
+per-stack orders, and a turn loop *inside* the game turn, all over the wire, plus the
+question of what the other players do while two of them fight. Scope it explicitly
+before starting; see the note at the end of this section.
+
+**Ground combat / invasion** — troop landing and the invasion result follow the same
+auto-resolve path as bombardment; audit alongside it.
+
+**Protocol specification (license-driven, new).** Phase 5 is a **separate private repo,
+not under the ROTP licence** (see below). For that client to be a non-derivative work it
+must be written from a *documented wire protocol*, not by reading or porting the GPL Java
+`Messages`/`Protocol`/`PlayerView` classes. So Phase 4 owes a written spec of the message
+set — every type, field, and the request/response and prompt/resolve flows. Without it
+the only way to build the private client is to crib GPL source, which is exactly what the
+licence boundary depends on not happening. **This is a Phase-4 deliverable, not
+paperwork.** (Not legal advice — worth a lawyer's review, as the open-core note says.)
+
 **Belongs to Phase 5 (web client), NOT Phase-4 backend work** — these use the
 already-complete backend (listed here so they aren't mistaken for backend gaps):
 - **Player color selection** — local view only, no server state; each client picks colors.
@@ -808,7 +878,45 @@ ready tally; plus the pure rules.
 a real network. Everything above is proven in-process, where latency is zero and both
 clients share a JVM.
 
-Then **Phase 5: the browser client.**
+## Then — Phase 5: the browser client (SEPARATE PRIVATE REPO)
+
+**Purely a new browser client against the Phase-4 protocol. No server or protocol work
+belongs here** — if Phase 5 needs a backend change, that is a Phase-4 miss, and it goes
+back to Phase 4.
+
+**It lives in a separate private repository and is NOT covered by the ROTP licence**
+(user decision, 2026-08-09). This supersedes the earlier plan of shipping a *simple
+reference web client* publicly under GPL — there is no public web client; the Java Swing
+app in `rotp.mp.client` remains the public reference implementation that proves the
+protocol.
+
+What that costs, and why the spec above is load-bearing: the private client is a separate
+non-derivative work **only if** it shares no GPL source and speaks purely the documented
+wire protocol. It must therefore be written against the Phase-4 protocol spec — not by
+translating `Messages.java`. Keep that discipline visible in the private repo's history.
+
+Phase-5 scope (from the list above): player colour selection, the MOO-faithful galaxy-size
+subset, per-design partial fleet deploys, and the Mac-port interaction feel
+(`mac-ux-spec.md`).
+
+## Then — Phase 6: hosting on Oracle, with a game launcher
+
+Moved out of Phase 4 (user decision, 2026-08-09) — deployment is not backend
+functionality, and lumping it in obscured what Phase 4 actually owed.
+
+Already built and smoke-tested (see **`docs/deployment.md`** and `deploy/`): the
+`bind=` / `keystore=` / `keystorePassword=` / `savedir=` server arguments, the
+`rotp-game@.service` systemd template, and the Oracle Cloud ARM + Caddy runbook. One JVM
+hosts one game; ~six fit an Always Free Ampere A1 VM at `-Xmx2g`.
+
+**Still to build: a front end that spins up a JVM for players to join.** Today an
+operator starts each game by hand with `systemctl start rotp-game@N`. Phase 6 needs a
+service that lists running games, starts a new JVM on a free port when someone creates
+one, hands back the `wss://` URL to connect to, and reaps finished games. Open questions
+to settle when it starts: which repo it belongs in (it is server-side infrastructure, so
+GPL-public by the protocol-boundary rule — but it is also the commercial hosting layer,
+so this needs a deliberate call); how a game is authenticated/claimed; and the port and
+memory budget per game.
 
 Reminders for any further screen/order work: keep pure rendering-independent logic
 in small non-Swing classes (browser blueprint + unit-testable) with a
@@ -837,7 +945,9 @@ research).
   spec's §5 for a future pass.
 
 Phases 2 (reconnection, MP save/load, lobby race picks) and 3 (interactive mid-turn
-prompts with turn timers) are complete, and Phase 4 is complete; **next is Phase 5 (browser client)**. See design doc §7.
+prompts with turn timers) are complete; **Phase 4 is in progress** (all game functionality
+onto the wire), then Phase 5 (private browser-client repo) and Phase 6 (Oracle hosting +
+game launcher). See design doc §7.
 
 ## Gotchas the tests and code already encode (don't relearn these the hard way)
 

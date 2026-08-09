@@ -1,6 +1,11 @@
 # Hosting the multiplayer server on the internet
 
-Phase 4 infrastructure. Getting the headless server reachable from a browser is a
+**Phase 6.** (This was written as Phase-4 work; hosting was moved out to its own phase on
+2026-08-09, since it is infrastructure rather than game functionality. Phase 6 also owes a
+front end that spins up a JVM per game — see the handoff doc; everything below is the
+by-hand deployment that front end will automate.)
+
+Getting the headless server reachable from a browser is a
 hard prerequisite for the Phase 5 web client — a page served over `https` may only
 open a `wss://` socket, so a bare `ws://host:8777` will not do once the client is
 a real web page.
@@ -26,8 +31,13 @@ and a systemd unit.
 ## 1. Build
 
 ```bash
-mvn -q package                     # target/rotp-<version>.jar (fat JAR)
+mvn -q package        # target/rotp-<version>.jar  (~969MB, server + offline game)
+                      # target/rotp-client.jar     (~3MB, client only)
 ```
+
+Only the big one goes on the server. The small one is the multiplayer client: it renders
+from PlayerView JSON and holds no game model, so it needs none of the game art — hand
+that to players rather than a gigabyte.
 
 The JAR is architecture-independent; build it anywhere and copy it to the ARM VM.
 Only a JDK 17+ runtime is needed there (`sudo apt install openjdk-17-jre-headless`
@@ -38,7 +48,7 @@ on Ubuntu, `sudo dnf install java-17-openjdk-headless` on Oracle Linux).
 ```bash
 sudo useradd --system --home /opt/rotp --shell /usr/sbin/nologin rotp
 sudo mkdir -p /opt/rotp /etc/rotp /var/lib/rotp
-sudo cp target/rotp-*.jar /opt/rotp/rotp.jar
+sudo cp target/rotp-1.04-mp-SNAPSHOT.jar /opt/rotp/rotp.jar   # the full jar, not rotp-client.jar
 sudo mkdir -p /var/lib/rotp/game-{1,2,3,4,5,6}
 sudo chown -R rotp:rotp /opt/rotp /var/lib/rotp
 
@@ -88,7 +98,7 @@ The Java reference client speaks the same URL, which is how you test a hosted
 game before the browser client exists:
 
 ```bash
-java -jar rotp.jar --client url=wss://rotp.example.com/game/1 name=Alice
+java -jar rotp-client.jar --client url=wss://rotp.example.com/game/1 name=Alice
 ```
 
 (`host=`/`port=` still work for a plain `ws://` LAN game.)
