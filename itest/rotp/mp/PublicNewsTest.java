@@ -22,6 +22,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import rotp.model.game.GameSession;
 import rotp.mp.MpTestSupport.Client;
 import rotp.mp.MpTestSupport.Server;
 import rotp.mp.protocol.Messages;
@@ -66,6 +67,25 @@ public class PublicNewsTest {
         assertNotNull(news, "GNN news is delivered to the client as a NEWS notification");
         assertTrue(news.text != null && news.text.contains("comet"),
             "the news carries the galactic story text: " + (news == null ? null : news.text));
+    }
+
+    @Test
+    @Timeout(60)
+    void gnnRankingBulletinsAreBroadcastAsNews() throws Exception {
+        server = MpTestSupport.startServer(1);
+        alice = new Client(server.port, "Alice");
+        alice.awaitView();
+
+        // queue a ranking bulletin the way GNNRankingNoticeCheck does (a title + the
+        // ranked empires); the server formats it and broadcasts it as NEWS
+        GNNNotification.notifyRanking("Galactic Census Report",
+            GameSession.instance().galaxy().activeEmpires());
+
+        alice.ready();
+        Messages.Notification news = MpTestSupport.firstNotification(alice, "NEWS");
+        assertNotNull(news, "a ranking bulletin is delivered as a NEWS notification");
+        assertTrue(news.text != null && news.text.contains("Census") && news.text.contains("1."),
+            "the ranking carries the title and the ranked empires: " + (news == null ? null : news.text));
     }
 
     @Test

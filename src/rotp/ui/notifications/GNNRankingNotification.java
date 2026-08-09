@@ -19,7 +19,7 @@ import java.util.List;
 import rotp.model.empires.Empire;
 import rotp.ui.RotPUI;
 
-public class GNNRankingNotification implements TurnNotification {
+public class GNNRankingNotification implements TurnNotification, PublicNews {
     private final String type;
     private final String eventId;
     private final List<Empire> empires;
@@ -28,6 +28,17 @@ public class GNNRankingNotification implements TurnNotification {
         type = messageType;
         empires = empireList;
         eventId = id;
+    }
+    @Override
+    public String newsText() {
+        // the title is already-resolved text; append the ranked empires (list is sorted
+        // strongest-first, so index 0 is rank 1)
+        StringBuilder sb = new StringBuilder(type == null ? "" : type);
+        if (empires != null) {
+            for (int i = 0; i < empires.size(); i++)
+                sb.append(i == 0 ? "  " : ", ").append(i + 1).append(". ").append(empires.get(i).name());
+        }
+        return sb.toString();
     }
     @Override
     public String displayOrder() { return GNN_NOTIFY; }
