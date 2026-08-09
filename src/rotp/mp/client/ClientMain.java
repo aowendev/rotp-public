@@ -194,6 +194,11 @@ public class ClientMain {
         JComboBox<DifficultyItem> difficultyCombo = new JComboBox<>();
         difficultyCombo.setToolTipText("Sets the AI opponents' strength (their economy). "
             + "Higher = tougher AI, not a harder puzzle for you.");
+        // turn timer picker (host-only): auto-resolve a we-go turn after N seconds (0 = off)
+        JLabel timerLabel = new JLabel("Turn timer (s):");
+        JSpinner timerSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 600, 10));
+        timerSpinner.setToolTipText("Auto-resolve a turn this many seconds after orders open, "
+            + "so an absent player can't stall the game. 0 = off (no timer).");
         JButton startBtn = new JButton("Start Game");
         aiLabel.setVisible(false);
         aiSpinner.setVisible(false);
@@ -201,6 +206,8 @@ public class ClientMain {
         sizeCombo.setVisible(false);
         difficultyLabel.setVisible(false);
         difficultyCombo.setVisible(false);
+        timerLabel.setVisible(false);
+        timerSpinner.setVisible(false);
         startBtn.setVisible(false);
         startBtn.addActionListener(e -> {
             Messages.StartGame sg = new Messages.StartGame();
@@ -211,6 +218,7 @@ public class ClientMain {
             DifficultyItem df = (DifficultyItem) difficultyCombo.getSelectedItem();
             if (df != null)
                 sg.difficulty = df.id;
+            sg.turnTimerSeconds = (Integer) timerSpinner.getValue();
             clientHolder[0].sendMessage(sg);
             startBtn.setEnabled(false);
             status.setText("Starting game...");
@@ -241,6 +249,8 @@ public class ClientMain {
         lobby.add(sizeCombo);
         lobby.add(difficultyLabel);
         lobby.add(difficultyCombo);
+        lobby.add(timerLabel);
+        lobby.add(timerSpinner);
         lobby.add(aiLabel);
         lobby.add(aiSpinner);
         lobby.add(startBtn);
@@ -268,6 +278,8 @@ public class ClientMain {
                     amHost[0] = j.host;
                     aiLabel.setVisible(j.host);
                     aiSpinner.setVisible(j.host);
+                    timerLabel.setVisible(j.host);
+                    timerSpinner.setVisible(j.host);
                     // size/AI-ability pickers show once their options arrive; reveal now if already loaded
                     sizeLabel.setVisible(j.host && sizeCombo.getItemCount() > 0);
                     sizeCombo.setVisible(j.host && sizeCombo.getItemCount() > 0);
@@ -323,6 +335,8 @@ public class ClientMain {
                     sizeCombo.setVisible(false);
                     difficultyLabel.setVisible(false);
                     difficultyCombo.setVisible(false);
+                    timerLabel.setVisible(false);
+                    timerSpinner.setVisible(false);
                     aiLabel.setVisible(false);
                     aiSpinner.setVisible(false);
                     startBtn.setVisible(false);

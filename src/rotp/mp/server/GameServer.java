@@ -418,6 +418,12 @@ public class GameServer extends WebSocketServer {
             gameDifficulty = msg.difficulty;
             System.out.println("[server] host set difficulty (AI ability) "+gameDifficulty);
         }
+        // the host may set (or disable) the turn timer for the game
+        if (msg.turnTimerSeconds >= 0) {
+            setTurnTimer(msg.turnTimerSeconds);
+            System.out.println("[server] host set turn timer "
+                + (msg.turnTimerSeconds > 0 ? msg.turnTimerSeconds + "s" : "off"));
+        }
         beginStart(msg.aiOpponents);
     }
 

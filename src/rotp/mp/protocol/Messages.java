@@ -82,6 +82,9 @@ public final class Messages {
         public String galaxySize;
         /** chosen difficulty = AI ability (IGameOptions.DIFFICULTY_*); null keeps the default */
         public String difficulty;
+        /** per-turn timer in seconds: the server auto-resolves a we-go turn this long after
+         * orders open, so an absent human can't stall it. 0 = off; -1 = keep server default */
+        public int turnTimerSeconds = -1;
     }
 
     /**

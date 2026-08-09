@@ -31,11 +31,13 @@ it; `TurnStatus.secondsRemaining` drives a client countdown. (6) **Public news (
 galactic-news turn-notifications (random events, genocides, alliances, council, ...) are
 broadcast to every client as NEWS notifications instead of being dropped. (7) **Combat /
 spy alerts** — the engine's per-turn `GameAlert`s (transports killed/perished, bases /
-factories sabotaged, tech stolen, spy report, ...) are delivered to the human (empire 0)
-as ALERT notifications. Prompts (1-4) ride a reusable `Prompts` message. What remains are
-post-v1 enhancements (multi-human alert routing, GNN ranking, turn-timer lobby pick, fuller
-async-diplomacy UX). **Next: Phase 4 (internet hosting) / Phase 5 (browser client).**
-**73 tests green.** See "Then — Phase 3"._
+factories sabotaged, tech stolen, spy report, ...) are delivered to the affected human as
+ALERT notifications, routed per-recipient (works in a 2-human game). Prompts (1-4) ride a
+reusable `Prompts` message. **Backend hardening (2026-08-09) then closed out the multi-human
+gaps as a pre-Phase-5 gate**: per-recipient alert routing, GNN ranking bulletins as NEWS, a
+host turn-timer lobby pick, and a 2-human end-to-end test foundation. **Next: Phase 4
+(internet hosting) / Phase 5 (browser client).** **77 tests green (incl. 2-human).** See
+"Then — Phase 3"._
 
 ## Where we are
 
@@ -55,7 +57,7 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **73 JUnit integration tests, green.**
+projections and per-category locks**. **77 JUnit integration tests, green (incl. 2-human end-to-end).**
 
 **Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is complete for v1** — all seven
 increments (interactive tech selection; incoming diplomacy; council vote; colonize choice;
@@ -517,21 +519,38 @@ accessors on the ~10 alert classes + `description()` re-framing away from `playe
 **ranking** bulletins are still not carried (need empire-list formatting).
 
 **DECISION (2026-08-09): resolve the remaining Phase-3 items and get the backend
-end-to-end tested BEFORE starting the browser client (Phase 5).** Rationale: a fully
-proven, per-empire-correct backend means any bug found while building the browser client
-is purely a client bug, not a backend one. So these are no longer "post-v1 polish" — they
-are a pre-Phase-5 gate:
-- **[1] Multi-human alert routing** — route combat/spy `GameAlert`s to the *affected*
-  empire, not just empire 0. Add a recipient-empire to each alert (set at `create()`),
-  re-frame `description()` to use the recipient's `sv` instead of `player()`, flip the
-  creation gates from `isPlayer()` to `!decidedByAI()`, and route each alert to its
-  recipient's client. Needs a 2-human end-to-end test.
-- **[2] GNN ranking bulletins** — carry `GNNRankingNotification` (message-type key + empire
-  list) as public NEWS; format it server-side.
-- **[3] Turn timer as a lobby pick** — expose `setTurnTimer` as a host lobby control (like
-  galaxy size / AI ability), not only a server arg.
-- **[4] Multi-human test coverage** — add 2-human end-to-end tests so per-empire routing
-  (views, notifications, prompts, alerts) is proven, not just the 1-human path.
+end-to-end tested BEFORE starting the browser client (Phase 5)** — a fully proven,
+per-empire-correct backend means any bug found while building the browser client is
+purely a client bug. **All four items are now DONE (2026-08-09); 77 tests green, 0 skips.**
+- **[1] Multi-human alert routing (DONE).** `GameAlert` base gained a `recipient` empire
+  (defaults to `player()` when unset, so single-player/desktop are unchanged); each alert's
+  `description()` frames from `recipient().sv`, and `create()` returns the instance so call
+  sites chain `.recipient(...)`. The creation gates flipped from `isPlayer()` to
+  `!decidedByAI()` (a true no-op for single-player incl. autoplay) across Colony
+  (transports/invaders), Transport (perished/captured — one alert per human involved),
+  Sabotage bases/factories, Espionage tech-steal, Trespassing. Server: `pendingAlerts` is
+  keyed by recipient empire id; each empire gets its own alerts. Test:
+  `CombatSpyAlertTest.aCombatAlertIsRoutedToTheAffectedHumanNotEveryone` (Bob/empire 1
+  perishes transports → Bob gets the ALERT, Alice/empire 0 does not). SpyReportAlert stays
+  empire-0 (its SpyNetwork gate is `isPlayer()`), a documented minor limitation.
+- **[2] GNN ranking bulletins (DONE).** `GNNRankingNotification` implements `PublicNews`;
+  `newsText()` appends the ranked empires (list sorted strongest-first) to the title, and
+  the existing `collectPublicNews` path broadcasts it as NEWS. Test:
+  `PublicNewsTest.gnnRankingBulletinsAreBroadcastAsNews`.
+- **[3] Turn timer as a lobby pick (DONE).** `StartGame.turnTimerSeconds` (>=0 sets it, -1
+  keeps the server default); `handleStartGame` calls `setTurnTimer`; the reference client
+  has a host-only turn-timer spinner. Test:
+  `TurnTimerTest.theHostCanSetTheTurnTimerAsALobbyPick`.
+- **[4] Multi-human test coverage (DONE).** `TwoHumanTest` (deterministic joins via
+  `awaitJoined`: Alice=0, Bob=1; distinct fog-of-war views; a we-go turn resolves only when
+  both are ready) + the 2-human alert-routing test above. Pattern for 2-human turns in
+  tests: `alice.raw(new Ready())` (non-blocking) then `bob.ready()` (awaits the post-turn
+  view).
+
+**Backend is now considered complete and end-to-end tested for Phase 5.** Deeper
+multi-human framing (GNN/notification text is still composed from empire 0's fog-of-war;
+SpyReportAlert is empire-0-only) is a known, documented limitation, acceptable for the
+solo-and-AI-first v1 and improvable later.
 - **Async player-to-player diplomacy** — today a human→human offer already defers to the
   other human's prompt (increment 2); a fuller negotiation UX (counter-offers, tech
   trades) is future work.

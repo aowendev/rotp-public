@@ -96,6 +96,26 @@ public class TurnTimerTest {
         assertNull(stray, "with the timer off, the turn does not auto-resolve");
     }
 
+    @Test
+    @Timeout(60)
+    void theHostCanSetTheTurnTimerAsALobbyPick() throws Exception {
+        server = MpTestSupport.startServer(2);   // 2 slots; the host starts early with AI
+        alice = new Client(server.port, "Alice");
+        assertTrue(alice.awaitJoined().host, "the first player is the host");
+
+        // the host chooses a 2s turn timer in the lobby start message
+        Messages.StartGame sg = new Messages.StartGame();
+        sg.aiOpponents = 2;
+        sg.turnTimerSeconds = 2;
+        alice.raw(sg);
+
+        PlayerView v = alice.awaitView();
+        int startTurn = v.turn;
+        // without readying, the host's chosen timer auto-resolves the turn
+        PlayerView after = alice.awaitView();
+        assertEquals(startTurn + 1, after.turn, "the host's lobby turn-timer pick auto-resolved the turn");
+    }
+
     /** wait for a turn-status message that reports an armed timer */
     private static Messages.TurnStatus awaitStatusWithTimer(Client c) throws Exception {
         for (int i = 0; i < 20; i++) {
