@@ -493,11 +493,17 @@ resolved display text); `GameServer.collectPostTurnPrompts()` now also picks out
 appends them (category `NEWS`) to every client's notification list. Covers random
 galactic events, genocides, alliances formed/broken, council news, expansion, rebellion.
 Test: `PublicNewsTest` (injected GNN news arrives as a NEWS notification; a quiet turn
-carries none). CAVEATS / remaining: (a) the engine composes GNN text from the local
-player's (empire 0's) fog-of-war, so in a multi-human game the wording is empire-0-framed;
-(b) **ranking bulletins** (`GNNRankingNotification`) are not yet carried — they store a
-message-type key + empire list needing per-empire formatting; (c) **combat/spy alerts are
-a separate subsystem** (`GameAlert` in `GameSession.alerts`, exposing only
+carries none). **GNN NO-FOG (2026-08-09):** GNN is a galaxy-wide news network, so the
+whole subsystem's fog gating on `player()` (genocide/alliance/rebellion/expansion notices
+and every random-event notice gate on `player().knowsOf/hasContact/hasContacted` and frame
+with `player().sv.name`) was routed through new `Base` helpers (`gnnKnowsOf`,
+`gnnHasContact/ed`, `gnnKnowsSystem`, `gnnSysName`) governed by a session flag the server
+sets (`GameSession.gnnIgnoresFogOfWar`). With it on, news about un-met empires/systems is
+generated with true names and broadcast to everyone; single-player leaves the flag off so
+it is unchanged. Test: `PublicNewsTest.gnnReportsNewsAboutEmpiresThePlayerHasNotMet`.
+Earlier caveats now resolved: (a) ranking bulletins ARE carried (increment 2); (b) GNN is
+no longer empire-0-fog-limited. Remaining: **combat/spy alerts are a separate subsystem**
+(`GameAlert` in `GameSession.alerts`, exposing only
 `description()`, with no per-empire target accessor and a player-POV lifecycle) — routing
 those per-empire needs target accessors added across ~10 alert classes and is deferred.
 
@@ -547,10 +553,13 @@ purely a client bug. **All four items are now DONE (2026-08-09); 77 tests green,
   tests: `alice.raw(new Ready())` (non-blocking) then `bob.ready()` (awaits the post-turn
   view).
 
-**Backend is now considered complete and end-to-end tested for Phase 5.** Deeper
-multi-human framing (GNN/notification text is still composed from empire 0's fog-of-war;
-SpyReportAlert is empire-0-only) is a known, documented limitation, acceptable for the
-solo-and-AI-first v1 and improvable later.
+**Backend is now considered complete and end-to-end tested for Phase 5.** GNN is now a
+true galaxy-wide news network (no fog of war, broadcast to all — see "GNN NO-FOG" above).
+Remaining known limitations, acceptable for the solo-and-AI-first v1: `SpyReportAlert` is
+empire-0-only (its `SpyNetwork` gate is `isPlayer()`; the specific spy events — tech
+stolen, bases/factories sabotaged — DO route per-empire), and the per-empire
+`NotificationCenter` text (system names in colony/contact events) is still framed from
+each recipient's own `sv`, which is correct per-empire.
 - **Async player-to-player diplomacy** — today a human→human offer already defers to the
   other human's prompt (increment 2); a fuller negotiation UX (counter-offers, tech
   trades) is future work.
