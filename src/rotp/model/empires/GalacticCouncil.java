@@ -51,12 +51,19 @@ public class GalacticCouncil implements Base, Serializable {
     private final List<Empire> rebels = new ArrayList<>();
     private final List<Empire> allies = new ArrayList<>();
 
-    //convention variables - reset when convention starts
-    private transient List<Empire> voters, empires;
-    private transient int voteIndex = 0;
-    private transient int[] votes;
-    private transient int totalVotes, votes1, votes2, lastVotes;
-    private transient Empire candidate1, candidate2, lastVoter, lastVoted;
+    // Convention variables - reset when a convention starts. None of these are
+    // transient: a game can be saved while a vote is open (multiplayer pauses the
+    // convention on a remote human, who may quit before voting), and a lost
+    // convention would silently re-convene from scratch on reload.
+    // voters/empires are the *ordering* votes[] is indexed by. Rebuilding them
+    // lazily is not equivalent — they are sorted by population, which is not
+    // faithfully reproducible after a reload — so an open convention keeps its
+    // lists rather than recomputing them (see nextTurn).
+    private List<Empire> voters, empires;
+    private int voteIndex = 0;
+    private int[] votes;
+    private int totalVotes, votes1, votes2, lastVotes;
+    private Empire candidate1, candidate2, lastVoter, lastVoted;
 
     public Empire leader()             { return leader; }
     public void leader(Empire e)       { leader = e; }
@@ -90,9 +97,13 @@ public class GalacticCouncil implements Base, Serializable {
     }
 
     public void nextTurn() {
-        voters = null;
-        empires = null;
-        
+        // a convention that is still mid-vote keeps its voter ordering; votes[] is
+        // indexed by it, so recomputing would misattribute the votes already cast
+        if (!conventionOpen()) {
+            voters = null;
+            empires = null;
+        }
+
         if (options().noGalacticCouncil())
             return;
         if (galaxy().numActiveEmpires() < 3)
@@ -139,6 +150,9 @@ public class GalacticCouncil implements Base, Serializable {
         openConvention();
         CouncilVoteNotification.create();
     }
+    /** a convention has been opened and not all its votes are in. Reads the raw
+     * fields (no lazy rebuild), so it is safe to ask before voters() is valid. */
+    private boolean conventionOpen()   { return (votes != null) && (voteIndex < votes.length); }
     public boolean votingInProgress()  { return voteIndex < voters().size(); }
     public boolean hasVoted(Empire e)  { return voters().indexOf(e) < voteIndex; }
     public int votes(Empire e)         { return votes[voters().indexOf(e)]; }

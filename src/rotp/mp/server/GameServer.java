@@ -1876,8 +1876,9 @@ public class GameServer extends WebSocketServer {
      * True when a council election is genuinely mid-vote. Guards against the transient
      * state where {@code votingInProgress()} reads true (voteIndex 0 &lt; voters) but the
      * per-voter tallies have not been initialized yet ({@code totalVotes()==0}) — as
-     * happens before {@code convene()} opens the convention, or after a mid-vote save
-     * reloads the transient vote arrays as null. Casting in that state would NPE.
+     * happens before {@code convene()} opens the convention. Casting in that state
+     * would NPE. (A mid-vote save used to land here too, because the vote arrays were
+     * transient; they now persist, so a reloaded convention resumes where it paused.)
      */
     private static boolean councilVoteOpen(rotp.model.empires.GalacticCouncil c) {
         return c.active() && c.votingInProgress() && (c.totalVotes() > 0);
