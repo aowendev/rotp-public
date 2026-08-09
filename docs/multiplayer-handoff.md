@@ -66,6 +66,17 @@ turn timers; public GNN news; combat/spy alerts) are in (see "Then — Phase 3")
 galaxy-size / AI-ability pickers, the colony/research/empire upgrades, minimal save/load,
 and the Phase-3 prompt/notification increments are committed on top of it.
 
+> **BACKEND SIGN-OFF (2026-08-09): the server/protocol backend is feature-complete and
+> end-to-end tested for v1 — Phase 5 (browser client) can begin.** By deliberate decision,
+> the remaining Phase-3 items were resolved and the backend proven per-empire-correct
+> (2-human end-to-end tests, per-recipient alerts/reports, galaxy-wide GNN, framing) *before*
+> starting the browser client, so **any bug found while building the Phase-5 client is a
+> client bug, not a backend one.** The Java client in `rotp.mp.client` remains the reference
+> implementation that proves the protocol; the browser client speaks the same
+> JSON-over-WebSocket protocol. Remaining items (see "Then — Phase 3" → "What genuinely
+> remains") are deferred polish, not blockers. 79 integration tests green (run in batches —
+> see the test-env note there).
+
 ## Run it
 
 ```bash
