@@ -15,7 +15,7 @@ Empire Overview (planets window); one-decimal ship-range display; and **minimal
 local save/load** (Save Game ⌘S; resume with `load=<name>`). **Phase 2
 is complete** — its two open items (player-color selection and the galaxy-size
 option set) are deferred to the web client, not built in the Java reference client.
-**Phase 3 is now underway: increments 1-4 are in.** (1) Interactive **tech selection** —
+**Phase 3 is complete for v1: 7 increments landed.** (1) Interactive **tech selection** —
 when a research category completes a tech, the server raises a self-contained SELECT_TECH
 prompt and the client pops a chooser. (2) **Incoming diplomacy** — when another empire
 offers a treaty/trade to a remote human, the offer is deferred (not auto-resolved) and
@@ -32,16 +32,19 @@ galactic-news turn-notifications (random events, genocides, alliances, council, 
 broadcast to every client as NEWS notifications instead of being dropped. (7) **Combat /
 spy alerts** — the engine's per-turn `GameAlert`s (transports killed/perished, bases /
 factories sabotaged, tech stolen, spy report, ...) are delivered to the human (empire 0)
-as ALERT notifications. Prompts (1-4) ride a reusable `Prompts` message. **73 tests
-green.** See "Then — Phase 3"._
+as ALERT notifications. Prompts (1-4) ride a reusable `Prompts` message. What remains are
+post-v1 enhancements (multi-human alert routing, GNN ranking, turn-timer lobby pick, fuller
+async-diplomacy UX). **Next: Phase 4 (internet hosting) / Phase 5 (browser client).**
+**73 tests green.** See "Then — Phase 3"._
 
 ## Where we are
 
-Branch **`multiplayer`** (off `master`). **Phases 0, 1, and 1.5 are complete, and
-Phase 2 (LAN & session completeness) is complete** — lobby AI-fill / solo-vs-AI,
-reconnection, minimal save/load, and race / galaxy-size / AI-ability picks are all
-in; the remaining color-selection and galaxy-size-option-set items are deferred to
-the web client (Phase 5). **Phase 3 (interactive mid-turn prompts) is next.** A game is
+Branch **`multiplayer`** (off `master`). **Phases 0, 1, 1.5, and 2 (LAN & session
+completeness) are complete, and Phase 3 (interactive mid-turn prompts) is complete for
+v1** — lobby AI-fill / solo-vs-AI, reconnection, minimal save/load, race / galaxy-size /
+AI-ability picks, and all seven Phase-3 prompt/notification increments are in; the
+remaining color-selection and galaxy-size-option-set items are deferred to the web client
+(Phase 5). **Next: Phase 4 (internet hosting) / Phase 5 (browser client).** A game is
 genuinely playable end-to-end over the wire: a headless server runs the real
 game; the DTO client renders every core screen (galaxy map, colony, research,
 fleets & transports, ship design, empire overview) from `PlayerView` and drives
@@ -54,12 +57,12 @@ and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
 projections and per-category locks**. **73 JUnit integration tests, green.**
 
-**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is underway** — increments 1-7
-(interactive tech selection; incoming diplomacy; council vote; colonize choice; turn
-timers; public GNN news; combat/spy alerts) are in (see "Then — Phase 3"). Built on `7a2cdd95` (Phase 2
-lobby AI-fill); the Races panel, client reconnection, lobby galaxy-size / AI-ability
-pickers, the colony/research/empire upgrades, and minimal save/load are committed on
-top of it across this session.
+**Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is complete for v1** — all seven
+increments (interactive tech selection; incoming diplomacy; council vote; colonize choice;
+turn timers; public GNN news; combat/spy alerts) are in (see "Then — Phase 3"). Built on
+`7a2cdd95` (Phase 2 lobby AI-fill); the Races panel, client reconnection, lobby
+galaxy-size / AI-ability pickers, the colony/research/empire upgrades, minimal save/load,
+and the Phase-3 prompt/notification increments are committed on top of it.
 
 ## Run it
 
@@ -297,9 +300,10 @@ the reference client. A human should still do one uninterrupted full playthrough
 to final victory/defeat to sign it off.
 
 Caveat (historical, from Phase 1.5): council votes + incoming AI diplomacy were
-auto-resolved at that time. Both are now interactive (Phase 3 increments 2-3): incoming
-offers and council votes prompt the remote human. Remaining auto-resolved mid-turn prompts
-(colonize choice, combat/spy/GNN events) are the remaining Phase 3 backlog.
+auto-resolved at that time. Phase 3 is now complete for v1 — incoming diplomacy, council
+votes, colonize choice, tech selection, turn timers, and GNN/combat/spy notifications are
+all wired (see "Then — Phase 3"). What remains is post-v1 polish (multi-human alert
+routing, GNN ranking, turn-timer lobby pick).
 
 ## Then — Phase 2 (LAN & session completeness)
 
@@ -373,11 +377,10 @@ to the web client (Phase 5), not built in the Java reference client:**
    without changing ROTP's engine. The server already validates against the full
    `galaxySizeOptions()`, so this is purely which options the client chooses to offer.
 
-Next up: **Phase 3** (interactive mid-turn prompts with turn timers — incoming
-diplomacy, tech/council selection; async player-to-player diplomacy) and eventually
-Phase 4 (internet hosting) / Phase 5 (browser client). See design doc §7.
+Next up (Phase 3 is done — see below): **Phase 4** (internet hosting) and **Phase 5**
+(browser client). See design doc §7.
 
-## Then — Phase 3 (interactive mid-turn prompts) — UNDERWAY
+## Then — Phase 3 (interactive mid-turn prompts) — COMPLETE (v1)
 
 The seam: a new **`Prompts`** message (`{turn, items:[Prompt]}`, registered `"prompts"`)
 carries interactive decisions from server to client, alongside the passive
@@ -564,9 +567,9 @@ research).
   Not-yet-captured screens (Fleet List, combat, council, etc.) are listed in the
   spec's §5 for a future pass.
 
-Then Phase 2+ (reconnection, MP save/load, lobby race/color picks), Phase 3
-(interactive mid-turn prompts with turn timers), Phase 4 (internet hosting),
-Phase 5 (browser client). See design doc §7.
+Phases 2 (reconnection, MP save/load, lobby race picks) and 3 (interactive mid-turn
+prompts with turn timers) are complete; **next is Phase 4 (internet hosting) and Phase 5
+(browser client)**. See design doc §7.
 
 ## Gotchas the tests and code already encode (don't relearn these the hard way)
 
