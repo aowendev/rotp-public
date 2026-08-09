@@ -531,10 +531,10 @@ none fired. The gates now read `isPlayer()` (empire 0): a no-op for real single-
 (category `ALERT`) **to empire 0's client only** (they're framed by `player()` = empire 0).
 Client: ALERT flows through the existing Notifications handler. Test: `CombatSpyAlertTest`
 sends empire-0 transports to an uncolonized system where they perish (a deterministic
-`TransportsPerishedAlert`) and asserts the client receives an ALERT. v1 CAVEATS: only
-empire 0 receives combat/spy alerts (multi-human per-empire routing needs recipient
-accessors on the ~10 alert classes + `description()` re-framing away from `player()`); GNN
-**ranking** bulletins are still not carried (need empire-list formatting).
+`TransportsPerishedAlert`) and asserts the client receives an ALERT. (SUPERSEDED by the
+pre-Phase-5 hardening below: combat/spy alerts now route per-recipient — the `GameAlert`
+base gained a `recipient` empire and the gates read `!decidedByAI()` — and GNN ranking
+bulletins ARE carried.)
 
 **DECISION (2026-08-09): resolve the remaining Phase-3 items and get the backend
 end-to-end tested BEFORE starting the browser client (Phase 5)** — a fully proven,
