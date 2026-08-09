@@ -1027,10 +1027,10 @@ public final class Colony implements Base, IMappedObject, Serializable {
                         + tr.empire().raceName() + " transports");
         
         if (!tr.empire().canColonize(starSystem())) {
-            if (tr.empire().isPlayer())   // multiplayer: empire 0 is the (remote) human; no-op for single-player
-                TransportsKilledAlert.create(empire(), starSystem(), tr.launchSize());
-            else if (empire().isPlayer())
-                InvadersKilledAlert.create(tr.empire(), starSystem(), tr.launchSize());
+            if (!tr.empire().decidedByAI())   // multiplayer: fires for a remote human; no-op for single-player
+                TransportsKilledAlert.create(empire(), starSystem(), tr.launchSize()).recipient(tr.empire());
+            else if (!empire().decidedByAI())
+                InvadersKilledAlert.create(tr.empire(), starSystem(), tr.launchSize()).recipient(empire());
             tr.size(0);
             return;
         }
@@ -1104,10 +1104,10 @@ public final class Colony implements Base, IMappedObject, Serializable {
         // player notification only.
         if (tr.size() == 0) {
             log(concat(str(tr.launchSize()), " ", tr.empire().raceName(), " transports perished at ", name()));
-            if (tr.empire().isPlayer())   // multiplayer: empire 0 is the (remote) human; no-op for single-player
-                TransportsKilledAlert.create(empire(), starSystem(), tr.launchSize());
-            else if (empire().isPlayer())
-                InvadersKilledAlert.create(tr.empire(), starSystem(), tr.launchSize());
+            if (!tr.empire().decidedByAI())   // multiplayer: fires for a remote human; no-op for single-player
+                TransportsKilledAlert.create(empire(), starSystem(), tr.launchSize()).recipient(tr.empire());
+            else if (!empire().decidedByAI())
+                InvadersKilledAlert.create(tr.empire(), starSystem(), tr.launchSize()).recipient(empire());
             return;
         }
 

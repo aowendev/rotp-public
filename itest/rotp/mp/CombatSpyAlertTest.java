@@ -15,6 +15,8 @@
  */
 package rotp.mp;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -27,26 +29,29 @@ import rotp.model.galaxy.StarSystem;
 import rotp.model.game.GameSession;
 import rotp.mp.MpTestSupport.Client;
 import rotp.mp.MpTestSupport.Server;
+import rotp.mp.protocol.Messages;
 import rotp.mp.protocol.PlayerView;
 
 /**
  * Combat / spy alerts (Phase 3): the engine's per-turn {@code GameAlert}s (transports
  * killed/perished, bases/factories sabotaged, tech stolen, spy report, ...) are delivered
- * to the human (empire 0) as ALERT notifications. Previously they were gated on
+ * to the affected human as ALERT notifications. Previously they were gated on
  * {@code isPlayerControlled()} — never true on the autoplay server — so they never fired
- * and were never delivered; the gates now read {@code isPlayer()} (empire 0).
+ * and were never delivered; the gates now read {@code !decidedByAI()} (any remote human)
+ * and each alert is routed to its recipient empire.
  *
- * Alerts are generated deep in turn processing, so this drives a real, deterministic
- * event through the in-process engine: empire 0's transports are sent to an uncolonized
- * system, where they perish on arrival, raising a TransportsPerishedAlert.
+ * Alerts are generated deep in turn processing, so these drive a real, deterministic
+ * event: an empire's transports are sent to an uncolonized system, where they perish on
+ * arrival, raising a TransportsPerishedAlert.
  */
 public class CombatSpyAlertTest {
     private Server server;
-    private Client alice;
+    private Client alice, bob;
 
     @AfterEach
     void tearDown() throws Exception {
         if (alice != null) alice.close();
+        if (bob != null) bob.close();
         if (server != null) server.stop();
     }
 
@@ -88,6 +93,44 @@ public class CombatSpyAlertTest {
                 sawAlert = true;
         }
         assertTrue(sawAlert, "the perished transports were delivered as an ALERT notification to the human");
+    }
+
+    @Test
+    @Timeout(150)
+    void aCombatAlertIsRoutedToTheAffectedHumanNotEveryone() throws Exception {
+        server = MpTestSupport.startServer(2);
+        alice = new Client(server.port, "Alice");
+        assertEquals(0, alice.awaitJoined().empireId, "Alice is empire 0");
+        bob = new Client(server.port, "Bob");
+        assertEquals(1, bob.awaitJoined().empireId, "Bob is empire 1");
+        alice.awaitView();
+        PlayerView bv = bob.awaitView();
+
+        // BOB (empire 1) sends transports to an uncolonized system, where they perish
+        StarSystem bobHome = GameSession.instance().galaxy().system(MpTestSupport.ownColony(bv).id);
+        StarSystem target = nearestUncolonized(bobHome);
+        assumeTrue(target != null, "no uncolonized system to send transports to");
+        bobHome.colony().scheduleTransportsToSystem(target, 1);
+
+        // advance turns (both humans ready each turn); Bob's alert must reach Bob only.
+        // Do NOT drain Alice's notifications during the loop so a stray ALERT would persist.
+        boolean bobAlert = false;
+        for (int t = 0; t < 25 && !bobAlert; t++) {
+            bothReady();
+            if (MpTestSupport.sawNotification(bob, "ALERT"))
+                bobAlert = true;
+        }
+        assertTrue(bobAlert, "the affected human (empire 1) received the ALERT");
+        assertFalse(MpTestSupport.sawNotification(alice, "ALERT"),
+            "empire 0 did NOT receive empire 1's combat alert (alerts are routed to the recipient)");
+    }
+
+    /** advance one we-go turn with both humans ready */
+    private void bothReady() throws Exception {
+        Messages.Ready r = new Messages.Ready();
+        alice.raw(r);            // Alice ready (non-blocking)
+        bob.ready();             // Bob ready -> both ready -> turn resolves, Bob gets his view
+        alice.awaitView();       // consume Alice's post-turn view
     }
 
     static { System.setProperty("java.awt.headless", "true"); }

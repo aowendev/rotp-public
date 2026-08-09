@@ -18,8 +18,10 @@ package rotp.ui.notifications;
 import rotp.model.game.GameSession;
 
 public class SpyReportAlert extends GameAlert {
-    public static void create() {
-        GameSession.instance().addAlert(new SpyReportAlert());
+    public static SpyReportAlert create() {
+        SpyReportAlert a = new SpyReportAlert();
+        GameSession.instance().addAlert(a);
+        return a;
     }
     @Override
     public String description() {

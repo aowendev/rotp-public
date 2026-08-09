@@ -22,14 +22,16 @@ import rotp.model.game.GameSession;
 public class TransportsPerishedAlert extends GameAlert {
     private final Empire empire;
     private final StarSystem system;
-    public static void create(Empire e, StarSystem s) {
-        GameSession.instance().addAlert(new TransportsPerishedAlert(e,s));
+    public static TransportsPerishedAlert create(Empire e, StarSystem s) {
+        TransportsPerishedAlert a = new TransportsPerishedAlert(e,s);
+        GameSession.instance().addAlert(a);
+        return a;
     }
     @Override
     public String description() {
         return text("MAIN_ALERT_TRANSPORTS_PERISHED", systemName());
     }
-    private String systemName() { return player().sv.name(system.id); }
+    private String systemName() { return recipient().sv.name(system.id); }
     private TransportsPerishedAlert(Empire e, StarSystem s) {
         empire = e;
         system = s;

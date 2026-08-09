@@ -302,16 +302,19 @@ public class Transport implements Base, Ship, Sprite, Serializable {
                 empire().takeAbandonedSystem(dest, this);
             else {
                 log(concat(str(size), " ", empire.name(), " transports perished at ", dest.name()));
-                if (empire.isPlayer())   // multiplayer: empire 0 is the (remote) human; no-op for single-player
-                    TransportsPerishedAlert.create(targetEmp, dest);
+                if (!empire.decidedByAI())   // multiplayer: fires for a remote human; no-op for single-player
+                    TransportsPerishedAlert.create(targetEmp, dest).recipient(empire);
                 size = 0;
             }
         }
         else if (dest.empire() != empire) {
             if (surrenderOnArrival()) {
                 log(concat(str(size), " ", empire.name(), " transports surrendered at ", dest.name()));
-                if (empire.isPlayer() || dest.empire().isPlayer())   // multiplayer: empire 0 = human; no-op for single-player
-                    TransportsCapturedAlert.create(empire, dest.empire(), dest, originalSize);
+                // multiplayer: alert each human involved, framed for them; no-op for single-player
+                if (!empire.decidedByAI())
+                    TransportsCapturedAlert.create(empire, dest.empire(), dest, originalSize).recipient(empire);
+                if (!dest.empire().decidedByAI())
+                    TransportsCapturedAlert.create(empire, dest.empire(), dest, originalSize).recipient(dest.empire());
                 size = 0;
             }
             else

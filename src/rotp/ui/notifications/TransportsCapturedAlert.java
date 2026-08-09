@@ -24,13 +24,15 @@ public class TransportsCapturedAlert extends GameAlert {
     private final Empire defender;
     private final StarSystem system;
     private final int num;
-    public static void create(Empire att, Empire def, StarSystem s, int n) {
-        GameSession.instance().addAlert(new TransportsCapturedAlert(att,def,s,n));
+    public static TransportsCapturedAlert create(Empire att, Empire def, StarSystem s, int n) {
+        TransportsCapturedAlert a = new TransportsCapturedAlert(att,def,s,n);
+        GameSession.instance().addAlert(a);
+        return a;
     }
     @Override
     public String description() {
         String desc;
-        if (attacker.isPlayer()) {
+        if (attacker == recipient()) {
             desc = text("MAIN_ALERT_TRANSPORTS_CAPTURED", systemName(), str(num));
             desc = defender.replaceTokens(desc, "alien");
         }
@@ -40,7 +42,7 @@ public class TransportsCapturedAlert extends GameAlert {
         }
         return desc;
     }
-    private String systemName() { return player().sv.name(system.id); }
+    private String systemName() { return recipient().sv.name(system.id); }
     private TransportsCapturedAlert(Empire att, Empire def, StarSystem s, int n) {
         attacker = att;
         defender = def;

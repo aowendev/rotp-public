@@ -37,10 +37,10 @@ public class SabotageBasesIncident extends DiplomaticIncident {
             otherView.embassy().resetAllianceTimer();
             otherView.embassy().resetPactTimer();
             Empire victim = otherView.owner();
-            if (victim.isPlayer()   // multiplayer: empire 0 = human; no-op for single-player
+            if (!victim.decidedByAI()   // multiplayer: fires for a remote human; no-op for single-player
             && (m.missileBasesDestroyed() > 0)) {
                 StarSystem sys = m.starSystem();
-                BasesDestroyedAlert.create(null, m.missileBasesDestroyed(), sys);
+                BasesDestroyedAlert.create(null, m.missileBasesDestroyed(), sys).recipient(victim);
             }
             return;
         }
@@ -57,10 +57,10 @@ public class SabotageBasesIncident extends DiplomaticIncident {
         destroyed = m.missileBasesDestroyed();
         severity = max(-30, (-2 * destroyed) + ev.embassy().currentSpyIncidentSeverity());
         
-        if (ev.owner().isPlayer()   // multiplayer: empire 0 = human; no-op for single-player
+        if (!ev.owner().decidedByAI()   // multiplayer: fires for a remote human; no-op for single-player
         && (destroyed > 0)) {
             StarSystem sys = m.starSystem();
-            BasesDestroyedAlert.create(ev.empire(), destroyed, sys);
+            BasesDestroyedAlert.create(ev.empire(), destroyed, sys).recipient(ev.owner());
             if (sys.isColonized() && sys.colony().defense().allocation() == 0) {
                 String str1 = text("MAIN_ALLOCATE_SABOTAGE_BASES", systemName(), str(destroyed), ev.empire().raceName());
                 str1 = ev.empire().replaceTokens(str1, "spy");

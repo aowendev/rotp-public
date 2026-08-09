@@ -15,8 +15,19 @@
  */
 package rotp.ui.notifications;
 
+import rotp.model.empires.Empire;
 import rotp.util.Base;
 
 public abstract class GameAlert implements Base {
+    // the empire this alert is addressed to (the victim/owner). Null means the local
+    // player() — single-player and the desktop UI never set it, so behavior is unchanged.
+    // The multiplayer server sets it so it can route the alert to the right human's client
+    // and so description() frames the story from that empire's fog-of-war.
+    private Empire recipient;
+
+    /** the empire this alert is for; defaults to the local player() when unset */
+    public Empire recipient()       { return recipient == null ? player() : recipient; }
+    public GameAlert recipient(Empire e) { recipient = e; return this; }
+
     public abstract String description();
 }

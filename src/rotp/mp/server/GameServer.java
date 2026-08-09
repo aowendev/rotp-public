@@ -82,8 +82,9 @@ public class GameServer extends WebSocketServer {
     private final Map<Integer, List<Messages.Prompt>> pendingPrompts = new HashMap<>();
     /** public galactic news (GNN) from this turn, broadcast to every client as NEWS notifications */
     private final List<Messages.Notification> pendingPublicNews = new ArrayList<>();
-    /** combat/spy GameAlerts from this turn, delivered to the human (empire 0) as ALERT notifications */
-    private final List<Messages.Notification> pendingAlerts = new ArrayList<>();
+    /** combat/spy GameAlerts from this turn, keyed by the recipient empire id (the human
+     * they are addressed to); delivered to that empire's client as ALERT notifications */
+    private final Map<Integer, List<Messages.Notification>> pendingAlerts = new HashMap<>();
     private WebSocket hostConn;   // first player to join; may start the game
     private volatile boolean starting = false;
     private volatile boolean gameStarted = false;
@@ -1524,12 +1525,13 @@ public class GameServer extends WebSocketServer {
                     result = notiCenter.update(emp);
                 }
                 // this empire's own events (colony/tech/contact/diplomacy), the public
-                // galactic news (GNN) every client sees, and — for empire 0, the human
-                // the engine frames alerts for — this turn's combat/spy alerts
+                // galactic news (GNN) every client sees, and this empire's own combat/spy
+                // alerts (routed to the affected human)
                 List<Messages.Notification> items = new ArrayList<>(result.notifications);
                 items.addAll(pendingPublicNews);
-                if (emp.id == rotp.model.empires.Empire.PLAYER_ID)
-                    items.addAll(pendingAlerts);
+                List<Messages.Notification> alerts = pendingAlerts.get(emp.id);
+                if (alerts != null)
+                    items.addAll(alerts);
                 if (!items.isEmpty()) {
                     Messages.Notifications msg = new Messages.Notifications();
                     msg.turn = galaxy().currentTurn();
@@ -1590,10 +1592,15 @@ public class GameServer extends WebSocketServer {
     private void collectCombatSpyAlerts() {
         for (rotp.ui.notifications.GameAlert a : GameSession.instance().alerts()) {
             String text;
-            try { text = a.description(); }
+            int recipientId;
+            try {
+                text = a.description();
+                recipientId = a.recipient().id;
+            }
             catch (RuntimeException ex) { continue; }   // skip any alert that can't render headless
             if ((text != null) && !text.trim().isEmpty())
-                pendingAlerts.add(note("ALERT", text.trim(), -1, -1));
+                pendingAlerts.computeIfAbsent(recipientId, k -> new ArrayList<>())
+                             .add(note("ALERT", text.trim(), -1, -1));
         }
     }
 

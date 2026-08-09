@@ -23,8 +23,10 @@ public class InvadersKilledAlert  extends GameAlert {
     private final Empire empire;
     private final StarSystem system;
     private final int num;
-    public static void create(Empire e, StarSystem s, int n) {
-        GameSession.instance().addAlert(new InvadersKilledAlert(e,s,n));
+    public static InvadersKilledAlert create(Empire e, StarSystem s, int n) {
+        InvadersKilledAlert a = new InvadersKilledAlert(e,s,n);
+        GameSession.instance().addAlert(a);
+        return a;
     }
     @Override
     public String description() {
@@ -32,7 +34,7 @@ public class InvadersKilledAlert  extends GameAlert {
         desc = empire.replaceTokens(desc, "alien");
         return desc;
     }
-    private String systemName() { return player().sv.name(system.id); }
+    private String systemName() { return recipient().sv.name(system.id); }
     private InvadersKilledAlert(Empire e, StarSystem s, int n) {
         empire = e;
         system = s;

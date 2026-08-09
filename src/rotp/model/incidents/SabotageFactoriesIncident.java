@@ -37,10 +37,10 @@ public class SabotageFactoriesIncident extends DiplomaticIncident {
         // no incident if spy not caught
         if (!m.spy().caught()) {
             Empire victim = otherView.owner();
-            if (victim.isPlayer()   // multiplayer: empire 0 = human; no-op for single-player
+            if (!victim.decidedByAI()   // multiplayer: fires for a remote human; no-op for single-player
             && (m.factoriesDestroyed() > 0)) {
                 StarSystem sys = m.starSystem();
-                FactoriesDestroyedAlert.create(null, m.factoriesDestroyed(), sys);
+                FactoriesDestroyedAlert.create(null, m.factoriesDestroyed(), sys).recipient(victim);
             }
             return;
         }
@@ -58,10 +58,10 @@ public class SabotageFactoriesIncident extends DiplomaticIncident {
         destroyed = m.factoriesDestroyed();
         severity = max(-20,(-1*destroyed)+ev.embassy().currentSpyIncidentSeverity());
 
-        if (ev.owner().isPlayer()   // multiplayer: empire 0 = human; no-op for single-player
+        if (!ev.owner().decidedByAI()   // multiplayer: fires for a remote human; no-op for single-player
         && (destroyed > 0)) {
             StarSystem sys = m.starSystem();
-            FactoriesDestroyedAlert.create(ev.empire(), destroyed, sys);
+            FactoriesDestroyedAlert.create(ev.empire(), destroyed, sys).recipient(ev.owner());
             if (sys.isColonized() && sys.colony().defense().allocation() == 0) {
                 String str1 = text("MAIN_ALLOCATE_SABOTAGE_FACTORIES", systemName(), str(destroyed), ev.empire().raceName());
                 str1 = ev.empire().replaceTokens(str1, "spy");

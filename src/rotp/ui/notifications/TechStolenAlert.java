@@ -20,8 +20,10 @@ import rotp.model.game.GameSession;
 public class TechStolenAlert extends GameAlert {
     private final int empSpy;
     private final String techId;
-    public static void create(int emp, String t) {
-        GameSession.instance().addAlert(new TechStolenAlert(emp,t));
+    public static TechStolenAlert create(int emp, String t) {
+        TechStolenAlert a = new TechStolenAlert(emp,t);
+        GameSession.instance().addAlert(a);
+        return a;
     }
     @Override
     public String description() {
