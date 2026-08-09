@@ -42,8 +42,9 @@ a council vote that survives save/load, the fuller diplomacy backend (tech excha
 counter-offers, aid, threats), per-empire multi-human outcomes, and the bombardment
 choice. **Ship combat auto-resolves by decision** (2026-08-09) — a tactical battle would
 stall every other player — so only the decisions *around* combat are on the wire.
-**Four items remain open**: the steal-tech and sabotage-target choices, joint war offers,
-and a written protocol spec — plus **server error-hardening** (user, 2026-08-09: anything
+**Four items remain open, all confirmed in scope** (user, 2026-08-09 — not to be dropped
+or pushed to Phase 5): the steal-tech and sabotage-target choices, joint war offers, and a
+written protocol spec. Plus **server error-hardening** as a standing requirement (anything
 that could cause an error on the server must be resolved before Phase 5). Hosting moved to **Phase 6** (Scaleway for initial testing;
 it also owes a front end that spins up a JVM per game). **Phase 5 is a separate private
 repo**, not under the ROTP licence.
@@ -792,20 +793,29 @@ checklist is **`mp-test-scenarios.md`** — treat Phase 4 as unfinished until it
 Found by auditing the engine for decisions a *local* human makes that a remote human
 currently cannot. Everything here is a Phase-4 blocker under the definition above.
 
-**Queued turn-notifications the server does not yet convert into prompts.** These are
-the *same shape* as COLONIZE / INCOMING_DIPLOMACY, which are already done — the engine
-queues a notification, `collectPostTurnPrompts` turns it into a prompt, a command
-resolves it. Tractable, and the pattern is proven:
-- **`StealTechNotification`** — after a successful espionage mission, MOO1 lets you pick
-  *which* technology to steal. A remote human never sees the choice.
-- **`SabotageNotification`** — pick the sabotage target (which colony's bases/factories).
-- **`BombardSystemNotification`** — decide whether to bombard a planet you hold orbit
-  over. Currently auto-resolved, which in a human-vs-human game means the AI decides
-  whether to glass another player's world.
+> **ALL FOUR CONFIRMED IN SCOPE (user, 2026-08-09).** None of these are to be dropped or
+> pushed into Phase 5. Do not re-litigate; build them.
 
-**Diplomacy:**
-- **Joint war offers** — `receiveOfferJointWar` / `receiveCounterJointWar` and
-  `DiplomacyJointWarMenu` have no protocol equivalent. The one audience action left.
+**The four remaining items:**
+
+1. **`StealTechNotification` — which technology to steal.** After a successful espionage
+   mission MOO1 lets you pick; a remote human never sees the choice, so the AI takes it.
+2. **`SabotageNotification` — the sabotage target** (which colony's bases or factories).
+   Likewise chosen for the player today.
+3. **Joint war offers** — `receiveOfferJointWar` / `receiveCounterJointWar` and
+   `DiplomacyJointWarMenu` have no protocol equivalent. The last audience action missing.
+4. **A written protocol specification** — see below; it is what keeps the private Phase-5
+   client a non-derivative work, so it is engineering, not paperwork.
+
+(1) and (2) are **queued turn-notifications the server does not yet convert into
+prompts** — the *same shape* as COLONIZE / INCOMING_DIPLOMACY and now BOMBARD, all of
+which are done: the engine queues a notification, `collectPostTurnPrompts` turns it into
+a prompt, and a command resolves it. The pattern is proven three times over, so these are
+tractable; follow `collectBombardPrompt` and `applyBombard` as the template.
+
+Alongside them, **server error-hardening** continues as a standing requirement rather than
+a discrete item (see its section below): long-running fuzzing, oversized payloads and
+many-client churn are still unaudited.
 
 **Tactical ship combat — SETTLED, will not be built (user, 2026-08-09).** Combat
 auto-resolves. The reason is decisive: an interactive battle is a multi-round screen
