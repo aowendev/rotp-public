@@ -35,15 +35,17 @@ factories sabotaged, tech stolen, spy report, ...) are delivered to the affected
 ALERT notifications, routed per-recipient (works in a 2-human game). Prompts (1-4) ride a
 reusable `Prompts` message. **Backend hardening (2026-08-09) then closed out the multi-human
 gaps as a pre-Phase-5 gate**: per-recipient alert routing, GNN ranking bulletins as NEWS, a
-host turn-timer lobby pick, and a 2-human end-to-end test foundation. **Phase 4 is IN
-PROGRESS**: landed so far are reserve fund transfers (both directions), browser-grade
-reconnection via session tokens, contact-via-war notification, a council vote that survives
-save/load, the fuller diplomacy backend (tech exchange with counter-offers, aid, threats),
-and per-empire multi-human outcomes. **Still missing** — tactical ship combat, the
-bombard / steal-tech / sabotage choices, joint war, and a written protocol spec; see
-"Then — Phase 4 — what is still missing". Hosting moved to **Phase 6**, which also owes a
-front end that spins up a JVM per game. **Phase 5 is a separate private repo**, not under
-the ROTP licence.
+host turn-timer lobby pick, and a 2-human end-to-end test foundation. **Phase 4:
+implementation essentially complete, NOT yet validated by human-vs-human play.** Landed:
+reserve fund transfers, browser-grade reconnection via session tokens, contact-via-war,
+a council vote that survives save/load, the fuller diplomacy backend (tech exchange with
+counter-offers, aid, threats), per-empire multi-human outcomes, and the bombardment
+choice. **Ship combat auto-resolves by decision** (2026-08-09) — a tactical battle would
+stall every other player — so only the decisions *around* combat are on the wire.
+**Four items remain open**: the steal-tech and sabotage-target choices, joint war offers,
+and a written protocol spec. Hosting moved to **Phase 6** (Scaleway for initial testing;
+it also owes a front end that spins up a JVM per game). **Phase 5 is a separate private
+repo**, not under the ROTP licence.
 **101 tests green, 0 skips (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
 
 ## Where we are
@@ -780,6 +782,12 @@ See **"Then — Phase 4 — what is still missing"** for the outstanding list.
 
 ### Then — Phase 4 — what is still missing
 
+**Not yet validated by human-vs-human play.** Everything below and everything already
+landed is proven only by in-process tests, where latency is zero and both clients share a
+JVM. A first two-machine LAN game (2026-08-09) got as far as both players joining from
+separate Macs, a galaxy generating and turns resolving; the rest is unexercised. The
+checklist is **`mp-test-scenarios.md`** — treat Phase 4 as unfinished until it passes.
+
 Found by auditing the engine for decisions a *local* human makes that a remote human
 currently cannot. Everything here is a Phase-4 blocker under the definition above.
 
@@ -798,17 +806,27 @@ resolves it. Tractable, and the pattern is proven:
 - **Joint war offers** — `receiveOfferJointWar` / `receiveCounterJointWar` and
   `DiplomacyJointWarMenu` have no protocol equivalent. The one audience action left.
 
-**The big one — tactical ship combat.** `ShipCombatManager` runs the interactive grid
-only when a stack `isPlayerControlled()`, which is never true on the server, so **every
-battle auto-resolves for everyone**. In MOO1 combat is a screen you play: move stacks,
-fire, retreat. This was a deliberate v1 simplification (design doc §"Turn model", citing
-MOO2/MOO3 precedent) and is by far the largest remaining subsystem — a combat grid,
-per-stack orders, and a turn loop *inside* the game turn, all over the wire, plus the
-question of what the other players do while two of them fight. Scope it explicitly
-before starting; see the note at the end of this section.
+**Tactical ship combat — SETTLED, will not be built (user, 2026-08-09).** Combat
+auto-resolves. The reason is decisive: an interactive battle is a multi-round screen
+*inside* a we-go turn, so every other player sits idle while two of them fight. That is
+also the original design decision (2026-07-18) rather than a new concession.
 
-**Ground combat / invasion** — troop landing and the invasion result follow the same
-auto-resolve path as bombardment; audit alongside it.
+What that does **not** license is auto-resolving the decisions *around* a battle — those
+are strategy, not tactics, and a human must make them:
+- **Bombardment — DONE (2026-08-09).** `BombardSystemNotification` only ever asked an
+  `isPlayerControlled()` empire, never true on the server, so it fell through to
+  `fl.bombard()`: one player's world could be glassed with neither player asked.
+  `AI.promptForBombardment` now gates on `!decidedByAI()` and the notification queues for
+  a remote human, becoming a BOMBARD prompt resolved by `bombard{systemId}`. Declining
+  leaves the fleet in orbit and re-asks next turn — **the point being that you may want
+  the factories intact to capture and steal technology**, which bombing destroys. The
+  desktop auto-bombard preferences are bypassed for a remote human: they are a local
+  setting on whatever machine happens to run the server. **Caveat: its test skips on a
+  turn-1 galaxy (no armed fleet in orbit that early), so this is implemented but not
+  proven end-to-end** — see `mp-test-scenarios.md` §2.
+- **Ground invasion** is driven by the transport orders, which are already player-issued,
+  so the decision is the human's; only the resulting battle auto-resolves. Worth
+  confirming in play (`mp-test-scenarios.md` §2.6).
 
 **Protocol specification (license-driven, new).** Phase 5 is a **separate private repo,
 not under the ROTP licence** (see below). For that client to be a non-derivative work it
@@ -874,9 +892,19 @@ Tests: `MultiHumanOutcomeTest` (4) — the second human is told they won; one hu
 elimination neither ends nor freezes the other's game; the dead empire is out of the
 ready tally; plus the pure rules.
 
-**Ready for a two-machine test.** What has *not* been exercised: two real machines over
-a real network. Everything above is proven in-process, where latency is zero and both
-clients share a JVM.
+**First two-machine LAN game run 2026-08-09.** Both players joined from separate Macs
+(Alice on localhost as empire 0, Bob over the LAN as empire 1), a galaxy generated with
+2 humans + 3 AI, colonize prompts fired for both, and turns resolved to 33. The rest of
+the human-vs-human surface is still unexercised — see **`mp-test-scenarios.md`**.
+
+**OPEN QUESTION surfaced by that game.** Bob dropped and the game advanced ~31 turns
+without him, because `onClose` calls `maybeRunTurn()` so a departed player cannot stall
+the turn. His empire ran on AI the whole time and he would reconnect having missed every
+decision. Defensible for a brief blip, harsh for anything longer — and it makes the turn
+timer redundant, since the timer exists precisely to stop an absent player stalling a
+game. Options: pause while a human is disconnected *unless* a turn timer is set
+(recommended); a grace period of N seconds; or leave it and default the timer on in the
+lobby. Undecided.
 
 ## Then — Phase 5: the browser client (SEPARATE PRIVATE REPO)
 
@@ -1022,7 +1050,9 @@ game launcher). See design doc §7.
   `RacesScreenTest`, `ReconnectTest`, `GalaxySizeTest`, `DifficultyTest`,
   `SaveLoadTest`; Phase 4 added `ReserveTest`, `DeploymentTest`, `TechTradeTest` and
   `MultiHumanOutcomeTest`).
-- `deploy/` + `docs/deployment.md` — Phase-4 hosting: systemd template unit, per-game env
-  file, and the Oracle Cloud ARM / Caddy / TLS runbook.
+- `deploy/` + `docs/deployment.md` — Phase-6 hosting: systemd template unit, per-game env
+  file, and the Scaleway / Caddy / TLS runbook with measured per-game sizing.
+- `docs/mp-test-scenarios.md` — the human-vs-human checklist Phase 4 must pass before it
+  counts as done.
 - Engine seams: `rotp.model.game.SessionUI`; `Empire.decidedByAI/isRemoteHuman`;
   moved statics in `Rotp` (scaling, debug file) and `GameSession` (pending options).
