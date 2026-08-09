@@ -26,11 +26,11 @@ public class GNNAllianceBrokenNotice implements Base {
         Empire pl = player();
         if ((emp1 == pl) || (emp2 == pl))
             return;
-        if (!pl.hasContact(emp1) && !pl.hasContact(emp2))
+        if (!gnnHasContact(emp1) && !gnnHasContact(emp2))
             return;
 
         String title = text("GNN_ALLIANCE_BROKEN");
-        if (pl.hasContact(emp1)) {
+        if (gnnHasContact(emp1)) {
             title = emp1.replaceTokens(title, "first");
             title = emp2.replaceTokens(title, "second");
         }

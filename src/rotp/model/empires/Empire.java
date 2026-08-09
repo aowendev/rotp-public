@@ -1125,7 +1125,7 @@ public final class Empire implements Base, NamedObject, Serializable {
         for (StarSystem sys: allColonizedSystems()) 
             sys.colony().clearAllRebellion();   
 
-        if (viewForEmpire(player()).embassy().contact()) {
+        if (gnnNoFog() || viewForEmpire(player()).embassy().contact()) {
             String leaderDesc = text("LEADER_PERSONALITY_FORMAT", leader.personality(),leader.objective());
             String message = text("GNN_OVERTHROW", leaderDesc);
             message = replaceTokens(message, "alien");

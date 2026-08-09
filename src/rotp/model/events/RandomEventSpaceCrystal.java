@@ -134,7 +134,7 @@ public class RandomEventSpaceCrystal implements Base, Serializable, RandomEvent 
         
         monster.plunder();
 
-        if (player().knowsOf(galaxy().empire(empId)) || !player().sv.name(sysId).isEmpty())
+        if (gnnKnowsOf(empId) || gnnKnowsSystem(sysId))
             GNNNotification.notifyRandomEvent(notificationText("EVENT_SPACE_CRYSTAL_3", monster.lastAttacker()), "GNN_Event_Crystal");
     }
     private void moveToNextSystem() {
@@ -183,7 +183,7 @@ public class RandomEventSpaceCrystal implements Base, Serializable, RandomEvent 
             s1 = emp.replaceTokens(s1, "victim");
         }
         else 
-            s1 = s1.replace("[system]", player().sv.name(sysId));
+            s1 = s1.replace("[system]", gnnSysName(sysId));
         return s1;
     }
 }

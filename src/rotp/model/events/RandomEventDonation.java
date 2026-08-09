@@ -42,7 +42,7 @@ public class RandomEventDonation implements Base, Serializable, RandomEvent {
         donationAmount = turnNum * 10;
         emp.addToTreasury(donationAmount);
 
-        if (player().knowsOf(emp))
+        if (gnnKnowsOf(emp))
             GNNNotification.notifyRandomEvent(notificationText(), "GNN_Event_Donation");
     }
 }

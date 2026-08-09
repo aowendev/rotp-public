@@ -82,8 +82,8 @@ public class RandomEventSupernova implements Base, Serializable, RandomEvent, Co
         targetSystem.eventKey(systemKey());
         researchNeeded = turnsNeeded * targetSystem.colony().totalProductionIncome();
         researchRemaining = researchNeeded;
-        if (player().knowsOf(empId)
-        && !player().sv.name(sysId).isEmpty())
+        if (gnnKnowsOf(empId)
+        && gnnKnowsSystem(sysId))
             GNNNotification.notifyRandomEvent(notificationText(), "GNN_Event_Supernova");
 
         affectColony();
@@ -122,7 +122,7 @@ public class RandomEventSupernova implements Base, Serializable, RandomEvent, Co
     }
     private String continuingText() {
         String s1 = text("EVENT_SUPERNOVA_2");
-        s1 = s1.replace("[system]", player().sv.name(sysId));
+        s1 = s1.replace("[system]", gnnSysName(sysId));
         s1 = s1.replace("[amt]", str((int)Math.ceil(researchRemaining)));
         s1 = s1.replace("[years]", str((int)Math.ceil(1+turnsNeeded-turnCount)));
         s1 = galaxy().empire(empId).replaceTokens(s1, "target");
@@ -130,13 +130,13 @@ public class RandomEventSupernova implements Base, Serializable, RandomEvent, Co
     }
     private String goodEndText() {
         String s1 = text("EVENT_SUPERNOVA_3");
-        s1 = s1.replace("[system]", player().sv.name(sysId));
+        s1 = s1.replace("[system]", gnnSysName(sysId));
         s1 = galaxy().empire(empId).replaceTokens(s1, "target");
         return s1;
     }
     private String badEndText() {
         String s1 = text("EVENT_SUPERNOVA_4");
-        s1 = s1.replace("[system]", player().sv.name(sysId));
+        s1 = s1.replace("[system]", gnnSysName(sysId));
         s1 = galaxy().empire(empId).replaceTokens(s1, "target");
         return s1;
     }
@@ -150,8 +150,8 @@ public class RandomEventSupernova implements Base, Serializable, RandomEvent, Co
         // possible colony is destroyed before supernova
         if (col != null) {
             col.research().endProject();
-            if (player().knowsOf(empId)
-            && !player().sv.name(sysId).isEmpty())
+            if (gnnKnowsOf(empId)
+            && gnnKnowsSystem(sysId))
                 GNNNotification.notifyRandomEvent(goodEndText(), "GNN_Event_Supernova");
         }
     }
@@ -169,8 +169,8 @@ public class RandomEventSupernova implements Base, Serializable, RandomEvent, Co
         // possible colony is destroyed before supernova
         if (col != null) {
             col.research().endProject();
-            if (player().knowsOf(empId)
-            && !player().sv.name(sysId).isEmpty())
+            if (gnnKnowsOf(empId)
+            && gnnKnowsSystem(sysId))
                 GNNNotification.notifyRandomEvent(badEndText(), "GNN_Event_Supernova");
         }
     }

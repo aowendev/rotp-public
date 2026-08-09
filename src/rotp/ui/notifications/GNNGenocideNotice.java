@@ -26,15 +26,15 @@ public class GNNGenocideNotice implements Base {
     }
     private GNNGenocideNotice(Empire victim, NamedObject killer) {
         Empire pl = player();
-        boolean knowsVictim = (victim == pl) || pl.hasContacted(victim.id);
+        boolean knowsVictim = (victim == pl) || gnnHasContacted(victim.id);
         boolean knowsKiller = false;
-        
+
         if (killer instanceof Empire) {
             Empire attacker = (Empire) killer;
-            knowsKiller = (attacker == pl) || pl.knowsOf(attacker) || pl.knowsOf(victim);
+            knowsKiller = (attacker == pl) || gnnKnowsOf(attacker) || gnnKnowsOf(victim);
         }
-        else if (killer instanceof SpaceMonster) 
-            knowsKiller = pl.knowsOf(victim);
+        else if (killer instanceof SpaceMonster)
+            knowsKiller = gnnKnowsOf(victim);
 
         // if player doesn't know either race, then don't notify
         if (!knowsVictim && !knowsKiller)

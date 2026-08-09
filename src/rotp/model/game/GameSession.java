@@ -97,7 +97,13 @@ public final class GameSession implements Base, Serializable {
     private final GameStatus status = new GameStatus();
     private long id;
     private boolean spyActivity = false;
-    
+    // GNN is a galaxy-wide news network. The multiplayer server sets this so GNN news is
+    // generated without the local player's fog of war (every empire/system is "known", true
+    // names used) and can then be broadcast to all players. Single-player leaves it off.
+    private transient boolean gnnIgnoresFogOfWar = false;
+    public boolean gnnIgnoresFogOfWar()          { return gnnIgnoresFogOfWar; }
+    public void gnnIgnoresFogOfWar(boolean b)    { gnnIgnoresFogOfWar = b; }
+
     public GameStatus status()                   { return status; }
     public long id()                             { return id; }
     public ExecutorService smallSphereService()  { return smallSphereService; }

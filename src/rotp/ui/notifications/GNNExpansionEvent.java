@@ -74,7 +74,7 @@ public class GNNExpansionEvent implements Base {
                 }
                 title = emp.replaceTokens(title,"expanding");
                 triggers++;
-                if (player().knowsOf(emp))
+                if (gnnKnowsOf(emp))
                     GNNNotification.notifyExpansion(title);
                 break;
             }

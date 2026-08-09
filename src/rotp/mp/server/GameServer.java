@@ -145,6 +145,7 @@ public class GameServer extends WebSocketServer {
             ? loadFile : loadFile + GameSession.SAVEFILE_EXTENSION;
         System.out.println("[server] resuming saved game: " + file);
         GameSession.instance().loadSession(GameSession.instance().saveDir(), file, false);
+        GameSession.instance().gnnIgnoresFogOfWar(true);   // transient flag; re-set on resume
         gameStarted = true;
         for (Empire e : galaxy().empires())
             if (e.isRemoteHuman())
@@ -581,6 +582,9 @@ public class GameServer extends WebSocketServer {
             }
         }
         GameSession.instance().startGame(options);
+        // GNN is a galaxy-wide news network here: generate it without empire 0's fog of
+        // war (so news about un-met empires/systems still fires) and broadcast to everyone.
+        GameSession.instance().gnnIgnoresFogOfWar(true);
 
         synchronized (this) {
             for (Player p : players.values()) {

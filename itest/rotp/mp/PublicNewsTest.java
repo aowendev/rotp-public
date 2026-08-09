@@ -22,11 +22,15 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
+import rotp.model.empires.Empire;
 import rotp.model.game.GameSession;
 import rotp.mp.MpTestSupport.Client;
 import rotp.mp.MpTestSupport.Server;
 import rotp.mp.protocol.Messages;
 import rotp.mp.protocol.PlayerView;
+import rotp.ui.notifications.GNNGenocideNotice;
 import rotp.ui.notifications.GNNNotification;
 
 /**
@@ -86,6 +90,28 @@ public class PublicNewsTest {
         assertNotNull(news, "a ranking bulletin is delivered as a NEWS notification");
         assertTrue(news.text != null && news.text.contains("Census") && news.text.contains("1."),
             "the ranking carries the title and the ranked empires: " + (news == null ? null : news.text));
+    }
+
+    @Test
+    @Timeout(60)
+    void gnnReportsNewsAboutEmpiresThePlayerHasNotMet() throws Exception {
+        server = MpTestSupport.startServer(1);
+        alice = new Client(server.port, "Alice");
+        PlayerView v = alice.awaitView();
+
+        Empire human = GameSession.instance().galaxy().empire(v.empireId);
+        Empire unmet = GameSession.instance().galaxy().empire(v.empireId == 0 ? 1 : 0);
+        assumeTrue(!human.hasContacted(unmet.id), "the AI empire is genuinely un-met at game start");
+
+        // a galaxy-wide genocide of the un-met empire. Without GNN no-fog (single-player
+        // behavior) this would be suppressed because the player has met neither race; on the
+        // server GNN ignores fog of war, so the news fires and is broadcast to everyone.
+        GNNGenocideNotice.create(unmet, null);
+
+        alice.ready();
+        Messages.Notification news = MpTestSupport.firstNotification(alice, "NEWS");
+        assertNotNull(news, "GNN reports galactic news even about an empire the player hasn't met");
+        assertTrue(news.text != null && !news.text.trim().isEmpty(), "the news carries text");
     }
 
     @Test

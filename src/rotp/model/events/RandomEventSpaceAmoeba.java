@@ -134,7 +134,7 @@ public class RandomEventSpaceAmoeba implements Base, Serializable, RandomEvent {
         
         monster.plunder();
 
-        if (player().knowsOf(empId)|| !player().sv.name(sysId).isEmpty())
+        if (gnnKnowsOf(empId)|| gnnKnowsSystem(sysId))
             GNNNotification.notifyRandomEvent(notificationText("EVENT_SPACE_AMOEBA_3", monster.lastAttacker()), "GNN_Event_Amoeba");
     }
     private void moveToNextSystem() {
@@ -183,7 +183,7 @@ public class RandomEventSpaceAmoeba implements Base, Serializable, RandomEvent {
             s1 = emp.replaceTokens(s1, "victim");
         }
         else 
-            s1 = s1.replace("[system]", player().sv.name(sysId));
+            s1 = s1.replace("[system]", gnnSysName(sysId));
             
         return s1;
     }

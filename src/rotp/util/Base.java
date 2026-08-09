@@ -98,6 +98,17 @@ public interface Base {
     public default IGameOptions options()  { return session().options(); }
     public default Empire player()         { return galaxy().player(); }
     public default boolean isPlayer(Empire e) { return galaxy().isPlayer(e); }
+    // GNN news is a galaxy-wide network: when the session marks GNN as ignoring the fog of
+    // war (the multiplayer server does), these treat every empire/system as known to the
+    // local player and use true system names, so news about un-met empires is still
+    // generated. Single-player leaves the flag off, so these are unchanged there.
+    public default boolean gnnNoFog()              { return session().gnnIgnoresFogOfWar(); }
+    public default boolean gnnKnowsOf(Empire e)    { return gnnNoFog() || player().knowsOf(e); }
+    public default boolean gnnKnowsOf(int empId)   { return gnnNoFog() || player().knowsOf(empId); }
+    public default boolean gnnHasContacted(int id) { return gnnNoFog() || player().hasContacted(id); }
+    public default boolean gnnHasContact(Empire e) { return gnnNoFog() || player().hasContact(e); }
+    public default boolean gnnKnowsSystem(int sysId) { return gnnNoFog() || !player().sv.name(sysId).isEmpty(); }
+    public default String gnnSysName(int sysId)    { return gnnNoFog() ? galaxy().system(sysId).name() : player().sv.name(sysId); }
     public default LabelManager labels()   { return LabelManager.current(); }
     public default IGameOptions newGameOptions()        { return GameSession.newOptions(); }
     public default void createNewGameOptions()          { GameSession.createNewOptions(); }
