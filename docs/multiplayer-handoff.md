@@ -36,7 +36,7 @@ ALERT notifications, routed per-recipient (works in a 2-human game). Prompts (1-
 reusable `Prompts` message. **Backend hardening (2026-08-09) then closed out the multi-human
 gaps as a pre-Phase-5 gate**: per-recipient alert routing, GNN ranking bulletins as NEWS, a
 host turn-timer lobby pick, and a 2-human end-to-end test foundation. **Next: Phase 4
-(internet hosting) / Phase 5 (browser client).** **77 tests green (incl. 2-human).** See
+(internet hosting) / Phase 5 (browser client).** **79 tests green (incl. 2-human).** See
 "Then — Phase 3"._
 
 ## Where we are
@@ -57,7 +57,7 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **77 JUnit integration tests, green (incl. 2-human end-to-end).**
+projections and per-category locks**. **79 JUnit integration tests, green (incl. 2-human end-to-end).**
 
 **Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is complete for v1** — all seven
 increments (interactive tech selection; incoming diplomacy; council vote; colonize choice;
@@ -481,8 +481,9 @@ an ignored prompt already falls back). `TurnStatus` gained `secondsRemaining` (-
 timer) for a client countdown; `ClientMain` shows "Xs left". The timer thread is a daemon
 and `stop(int)` shuts the executor down. Tests: `TurnTimerTest` (expiry auto-resolves
 without readying; readying still resolves immediately under a long timer; a 0 timer never
-auto-resolves). NOTE: the timer is a *server/session* setting, not yet a lobby pick — a
-host-facing lobby control (like galaxy size / AI ability) is the natural follow-up.
+auto-resolves). The timer is settable as a server arg AND as a host lobby pick
+(`StartGame.turnTimerSeconds`; a spinner in the reference client) — see the pre-Phase-5
+hardening section below.
 
 **Increment 6 — public GNN news (DONE, 2026-08-08).** Galactic news turn-notifications are
 now broadcast to every client as NEWS notifications (previously collected by `ServerUI`
@@ -501,11 +502,11 @@ with `player().sv.name`) was routed through new `Base` helpers (`gnnKnowsOf`,
 sets (`GameSession.gnnIgnoresFogOfWar`). With it on, news about un-met empires/systems is
 generated with true names and broadcast to everyone; single-player leaves the flag off so
 it is unchanged. Test: `PublicNewsTest.gnnReportsNewsAboutEmpiresThePlayerHasNotMet`.
-Earlier caveats now resolved: (a) ranking bulletins ARE carried (increment 2); (b) GNN is
-no longer empire-0-fog-limited. Remaining: **combat/spy alerts are a separate subsystem**
-(`GameAlert` in `GameSession.alerts`, exposing only
-`description()`, with no per-empire target accessor and a player-POV lifecycle) — routing
-those per-empire needs target accessors added across ~10 alert classes and is deferred.
+Earlier caveats all resolved: (a) ranking bulletins ARE carried (increment 2); (b) GNN is
+no longer empire-0-fog-limited; (c) combat/spy `GameAlert`s ARE routed per-recipient — the
+`GameAlert` base gained a `recipient` empire and the creation gates read `!decidedByAI()`
+(see the pre-Phase-5 hardening section); (d) spy reports ARE per-empire and MOO1-style
+espionage framing is in (see the SPY note in the hardening section).
 
 **Increment 7 — combat/spy alerts (DONE, 2026-08-09).** The engine's per-turn
 `GameAlert`s are now delivered to the human. They were gated on `isPlayerControlled()` at
@@ -527,7 +528,7 @@ accessors on the ~10 alert classes + `description()` re-framing away from `playe
 **DECISION (2026-08-09): resolve the remaining Phase-3 items and get the backend
 end-to-end tested BEFORE starting the browser client (Phase 5)** — a fully proven,
 per-empire-correct backend means any bug found while building the browser client is
-purely a client bug. **All four items are now DONE (2026-08-09); 77 tests green, 0 skips.**
+purely a client bug. **All four items are now DONE (2026-08-09); 79 tests green, 0 skips.**
 - **[1] Multi-human alert routing (DONE).** `GameAlert` base gained a `recipient` empire
   (defaults to `player()` when unset, so single-player/desktop are unchanged); each alert's
   `description()` frames from `recipient().sv`, and `create()` returns the instance so call
@@ -573,26 +574,34 @@ per-empire.
 NOTE (test env, 2026-08-09): the whole `mvn test` in one shot can wedge on this machine
 under load (maven leaves a surefire fork that stops reporting; the timing-sensitive 2-human
 tests then hit their 120s timeouts). Running the mp tests in a few `-Dtest=A,B,C` batches
-is fast and reliable — all 78 pass that way; individual/batched runs are the source of
+is fast and reliable — all 79 pass that way; individual/batched runs are the source of
 truth, not a single stalled full-suite invocation.
-- **Async player-to-player diplomacy** — today a human→human offer already defers to the
-  other human's prompt (increment 2); a fuller negotiation UX (counter-offers, tech
-  trades) is future work.
+
+**What genuinely remains (none are Phase-3 blockers; Phase 3 is done):**
+- **Async player-to-player diplomacy** — a human→human offer already defers to the other
+  human's prompt (increment 2); a fuller negotiation UX (counter-offers, tech trades) is
+  future work.
+- **Reserve fund transfers** (deferred TODO): spend reserve BC to a colony / bank a
+  planet's output to the reserve. Prototyped once and pulled; re-add in `Messages` +
+  `GameServer` + `EmpirePanel`.
+- **Per-design partial fleet deploys** (`deployFleet.counts[]`): Phase-1 polish.
+- **Notification gap**: an empire met *via* a simultaneous war declaration reports only
+  `CONTACT`, not the war (still visible in `EmpireDto.atWar`).
+- Then **Phase 4 (internet hosting)** and **Phase 5 (browser client)**.
 
 **GNN public news is now broadcast** (increment 6 above); the historical note follows for
 context. In the base engine GNN news is posted to the single global `GameSession`
 turn-notification queue and rendered from the one local player's POV (`RotPUI`) — not
 per-empire fog-of-war. Most GNN content is genuinely *public/galactic* (rankings,
 genocides, alliances formed/broken, council, random galactic events), so "scoping" it for
-MP mainly means **broadcasting to every client** (now done for the text-carrying GNN
-types), with a few naturally-private items (e.g. combat/spy `GameAlert`s) still to be
-routed only to the affected empire.
+MP mainly means **broadcasting to every client** (done, including GNN no-fog so news about
+un-met empires still fires), while combat/spy `GameAlert`s ARE now routed to the affected
+empire (per-recipient). All of GNN + combat/spy is wired.
 
 Deferred Phase-1 polish (pick up any time): per-design partial fleet deploys
-(`deployFleet.counts[]` — surface per-design count spinners on a selected fleet);
-`NotificationCenter` combat/spy/GNN events (event-based — natural Phase-3
-companions). Known notification gap: an empire met *via* a simultaneous war
-declaration reports only `CONTACT`, not the war (still in `EmpireDto.atWar`).
+(`deployFleet.counts[]` — surface per-design count spinners on a selected fleet). Known
+notification gap: an empire met *via* a simultaneous war declaration reports only
+`CONTACT`, not the war (still in `EmpireDto.atWar`).
 
 Reminders for any further screen/order work: keep pure rendering-independent logic
 in small non-Swing classes (browser blueprint + unit-testable) with a
