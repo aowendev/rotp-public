@@ -36,8 +36,8 @@ ALERT notifications, routed per-recipient (works in a 2-human game). Prompts (1-
 reusable `Prompts` message. **Backend hardening (2026-08-09) then closed out the multi-human
 gaps as a pre-Phase-5 gate**: per-recipient alert routing, GNN ranking bulletins as NEWS, a
 host turn-timer lobby pick, and a 2-human end-to-end test foundation. **Next: Phase 4
-(internet hosting) / Phase 5 (browser client).** **79 tests green (incl. 2-human).** See
-"Then — Phase 3"._
+(finish the outstanding backend items + internet hosting — see "Then — Phase 4") → Phase 5
+(browser client).** **79 tests green (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
 
 ## Where we are
 
@@ -46,7 +46,7 @@ completeness) are complete, and Phase 3 (interactive mid-turn prompts) is comple
 v1** — lobby AI-fill / solo-vs-AI, reconnection, minimal save/load, race / galaxy-size /
 AI-ability picks, and all seven Phase-3 prompt/notification increments are in; the
 remaining color-selection and galaxy-size-option-set items are deferred to the web client
-(Phase 5). **Next: Phase 4 (internet hosting) / Phase 5 (browser client).** A game is
+(Phase 5). **Next: Phase 4 (finish the outstanding backend items + internet hosting — see "Then — Phase 4") → Phase 5 (browser client).** A game is
 genuinely playable end-to-end over the wire: a headless server runs the real
 game; the DTO client renders every core screen (galaxy map, colony, research,
 fleets & transports, ship design, empire overview) from `PlayerView` and drives
@@ -73,9 +73,10 @@ and the Phase-3 prompt/notification increments are committed on top of it.
 > starting the browser client, so **any bug found while building the Phase-5 client is a
 > client bug, not a backend one.** The Java client in `rotp.mp.client` remains the reference
 > implementation that proves the protocol; the browser client speaks the same
-> JSON-over-WebSocket protocol. Remaining items (see "Then — Phase 3" → "What genuinely
-> remains") are deferred polish, not blockers. 79 integration tests green (run in batches —
-> see the test-env note there).
+> JSON-over-WebSocket protocol. Outstanding items (backend gaps + edge cases + internet
+> hosting) are gathered under **"Then — Phase 4"** as the work to finish before the web
+> client is done — all deferred polish or infra, not blockers. 79 integration tests green
+> (run in batches — see the test-env note there).
 
 ## Run it
 
@@ -390,8 +391,8 @@ to the web client (Phase 5), not built in the Java reference client:**
    without changing ROTP's engine. The server already validates against the full
    `galaxySizeOptions()`, so this is purely which options the client chooses to offer.
 
-Next up (Phase 3 is done — see below): **Phase 4** (internet hosting) and **Phase 5**
-(browser client). See design doc §7.
+Next up (Phase 3 is done — see below): **Phase 4** (finish the outstanding backend items +
+internet hosting — see "Then — Phase 4") and **Phase 5** (browser client). See design doc §7.
 
 ## Then — Phase 3 (interactive mid-turn prompts) — COMPLETE (v1)
 
@@ -588,17 +589,10 @@ tests then hit their 120s timeouts). Running the mp tests in a few `-Dtest=A,B,C
 is fast and reliable — all 79 pass that way; individual/batched runs are the source of
 truth, not a single stalled full-suite invocation.
 
-**What genuinely remains (none are Phase-3 blockers; Phase 3 is done):**
-- **Async player-to-player diplomacy** — a human→human offer already defers to the other
-  human's prompt (increment 2); a fuller negotiation UX (counter-offers, tech trades) is
-  future work.
-- **Reserve fund transfers** (deferred TODO): spend reserve BC to a colony / bank a
-  planet's output to the reserve. Prototyped once and pulled; re-add in `Messages` +
-  `GameServer` + `EmpirePanel`.
-- **Per-design partial fleet deploys** (`deployFleet.counts[]`): Phase-1 polish.
-- **Notification gap**: an empire met *via* a simultaneous war declaration reports only
-  `CONTACT`, not the war (still visible in `EmpireDto.atWar`).
-- Then **Phase 4 (internet hosting)** and **Phase 5 (browser client)**.
+Phase 3 has no open blockers. The outstanding items (backend gaps + edge cases from every
+phase before Phase 4, plus internet hosting) are gathered as **Phase 4 work — everything
+that must be resolved before the web client (Phase 5) is done** — see "Then — Phase 4"
+below.
 
 **GNN public news is now broadcast** (increment 6 above); the historical note follows for
 context. In the base engine GNN news is posted to the single global `GameSession`
@@ -609,10 +603,54 @@ MP mainly means **broadcasting to every client** (done, including GNN no-fog so 
 un-met empires still fires), while combat/spy `GameAlert`s ARE now routed to the affected
 empire (per-recipient). All of GNN + combat/spy is wired.
 
-Deferred Phase-1 polish (pick up any time): per-design partial fleet deploys
-(`deployFleet.counts[]` — surface per-design count spinners on a selected fleet). Known
-notification gap: an empire met *via* a simultaneous war declaration reports only
-`CONTACT`, not the war (still in `EmpireDto.atWar`).
+## Then — Phase 4 — finish the backend, then the web client (Phase 5)
+
+Phase 5 is the browser client. Per the **BACKEND SIGN-OFF** principle (any bug found while
+building the web client should be a client bug, not a backend one), Phase 4 is the bucket
+for **everything still outstanding that must be resolved before the web client is done** —
+the backend/protocol gaps and edge cases carried over from Phases 1–3, plus internet
+hosting. Everything here is deferred polish or infra, not a Phase-1/2/3 blocker; the
+solo-and-AI-on-LAN game is fully playable and tested today.
+
+**Backend / protocol — resolve before the web client is complete:**
+- **Reserve fund transfers** — spend reserve BC to a colony, and bank a planet's output
+  into the reserve. A real gameplay order the web client will expose; it was prototyped and
+  deliberately pulled, so the Empire Overview shows the reserve read-only. Re-add in
+  `Messages` + `GameServer` (+ `EmpirePanel` in the reference client). Live `TODO`s in
+  `EmpirePanel.java` and `Messages.java`. (Note: ROTP's `addReserve` halves the amount and
+  the reserve auto-fills — see `moo1-differences.md`.)
+- **Reconnection robustness for a browser** — a browser client reconnects constantly
+  (refresh, sleep, flaky networks). Today a client returning under its *original* name
+  rejoins its empire (`ReconnectTest`); a *different* name isn't matched, and brand-new
+  players are rejected mid-game. Firm up the policy (session tokens? empire re-claim rules?)
+  and add browser-grade reconnection tests.
+- **Contact-via-war notification** — an empire met *via* a simultaneous war declaration
+  reports only `CONTACT`, not the war (the war is in `EmpireDto.atWar`, so this is
+  cosmetic). Also emit the DIPLOMACY/war notification.
+- **Save-mid-council-vote** — a save taken while a council vote is open loses the vote
+  (transient vote arrays) and re-convenes on load. Persist or re-derive the open convention.
+- **Fuller diplomacy backend** (only if the web client wants full MOO diplomacy) —
+  counter-offers and tech trades need new commands/protocol; today a human→human offer
+  defers to the other human's accept/decline prompt (increment 2), which is the current v1.
+
+**Infrastructure:**
+- **Internet hosting** — the server must be reachable over the internet (NAT traversal /
+  relay / a hosted deployment) for a real online web-client game. This is the classic
+  Phase-4 goal and a hard prerequisite for Phase 5.
+
+**Belongs to Phase 5 (web client), NOT Phase-4 backend work** — these use the
+already-complete backend (listed here so they aren't mistaken for backend gaps):
+- **Player color selection** — local view only, no server state; each client picks colors.
+- **Galaxy-size option-set limiting** — the server validates the full `galaxySizeOptions()`;
+  the web lobby presents a MOO-faithful subset (Small/Medium/Large/Huge) client-side. See
+  the option-set-mismatch TODO under "Then — Phase 2".
+- **Per-design partial fleet deploys** — the protocol already carries `deployFleet.counts[]`;
+  the web client just surfaces per-design count controls (the reference client deploys whole
+  fleets only).
+- **Mac-port interaction feel** — reproduce the 1990s Mac port's menus/⌘-shortcuts (see
+  `mac-ux-spec.md`) in the browser client.
+
+Then **Phase 5: the browser client.**
 
 Reminders for any further screen/order work: keep pure rendering-independent logic
 in small non-Swing classes (browser blueprint + unit-testable) with a
@@ -641,8 +679,9 @@ research).
   spec's §5 for a future pass.
 
 Phases 2 (reconnection, MP save/load, lobby race picks) and 3 (interactive mid-turn
-prompts with turn timers) are complete; **next is Phase 4 (internet hosting) and Phase 5
-(browser client)**. See design doc §7.
+prompts with turn timers) are complete; **next is Phase 4 (finish the outstanding backend
+items + internet hosting — see "Then — Phase 4") and Phase 5 (browser client)**. See design
+doc §7.
 
 ## Gotchas the tests and code already encode (don't relearn these the hard way)
 
