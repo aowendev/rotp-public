@@ -35,9 +35,11 @@ factories sabotaged, tech stolen, spy report, ...) are delivered to the affected
 ALERT notifications, routed per-recipient (works in a 2-human game). Prompts (1-4) ride a
 reusable `Prompts` message. **Backend hardening (2026-08-09) then closed out the multi-human
 gaps as a pre-Phase-5 gate**: per-recipient alert routing, GNN ranking bulletins as NEWS, a
-host turn-timer lobby pick, and a 2-human end-to-end test foundation. **Next: Phase 4
-(finish the outstanding backend items + internet hosting — see "Then — Phase 4") → Phase 5
-(browser client).** **79 tests green (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
+host turn-timer lobby pick, and a 2-human end-to-end test foundation. **Phase 4 is COMPLETE (2026-08-09)**: reserve fund transfers (both directions), browser-grade reconnection via
+session tokens, contact-via-war notification, a council vote that survives save/load, and
+internet hosting (Oracle Cloud ARM, plain JAR, one JVM per game — `docs/deployment.md`). Includes the fuller diplomacy backend (tech exchange with counter-offers, aid, threats), built
+rather than deferred so no Phase-5 discovery can be a backend bug. **Next: Phase 5 (browser client).**
+**96 tests green, 0 skips (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
 
 ## Where we are
 
@@ -46,7 +48,8 @@ completeness) are complete, and Phase 3 (interactive mid-turn prompts) is comple
 v1** — lobby AI-fill / solo-vs-AI, reconnection, minimal save/load, race / galaxy-size /
 AI-ability picks, and all seven Phase-3 prompt/notification increments are in; the
 remaining color-selection and galaxy-size-option-set items are deferred to the web client
-(Phase 5). **Next: Phase 4 (finish the outstanding backend items + internet hosting — see "Then — Phase 4") → Phase 5 (browser client).** A game is
+(Phase 5). **Phase 4 is complete** (reserve transfers, session-token reconnection, contact-via-war,
+save-mid-council-vote, internet hosting, fuller diplomacy — see "Then — Phase 4"). **Next: Phase 5 (browser client).** A game is
 genuinely playable end-to-end over the wire: a headless server runs the real
 game; the DTO client renders every core screen (galaxy map, colony, research,
 fleets & transports, ship design, empire overview) from `PlayerView` and drives
@@ -57,7 +60,7 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **79 JUnit integration tests, green (incl. 2-human end-to-end).**
+projections and per-category locks**. **96 JUnit integration tests, green, 0 skips (incl. 2-human end-to-end).**
 
 **Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is complete for v1** — all seven
 increments (interactive tech selection; incoming diplomacy; council vote; colonize choice;
@@ -75,7 +78,8 @@ and the Phase-3 prompt/notification increments are committed on top of it.
 > implementation that proves the protocol; the browser client speaks the same
 > JSON-over-WebSocket protocol. Outstanding items (backend gaps + edge cases + internet
 > hosting) are gathered under **"Then — Phase 4"** as the work to finish before the web
-> client is done — all deferred polish or infra, not blockers. 79 integration tests green
+> client is done — all deferred polish or infra, not blockers; **all six are now done**
+> (2026-08-09). 96 integration tests green
 > (run in batches — see the test-env note there).
 
 ## Run it
@@ -84,7 +88,9 @@ and the Phase-3 prompt/notification increments are committed on top of it.
 # compile
 mvn compile
 
-# integration tests (headless, ~30s) — the safety net; run these after any change
+# integration tests (headless) — the safety net; run these after any change.
+# NB: run them in a few -Dtest=A,B,C batches, not one shot (see the test-env note
+# under "Then — Phase 3"); batched runs are the source of truth.
 mvn test
 
 # play a local game: one server, then N clients
@@ -101,6 +107,12 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp --server port=8777 load=mysave
 
 # classic offline single-player still works, unchanged
 java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
+
+# hosted on the internet (Phase 4): build the fat JAR and run one JVM per game.
+# bind=/keystore=/savedir= are the deployment args; see docs/deployment.md.
+mvn package
+java -Xmx2g -jar target/rotp-*.jar --server port=8777 players=2 \
+     bind=127.0.0.1 savedir=/var/lib/rotp/game-1
 ```
 
 ## What works (done + tested)
@@ -391,8 +403,8 @@ to the web client (Phase 5), not built in the Java reference client:**
    without changing ROTP's engine. The server already validates against the full
    `galaxySizeOptions()`, so this is purely which options the client chooses to offer.
 
-Next up (Phase 3 is done — see below): **Phase 4** (finish the outstanding backend items +
-internet hosting — see "Then — Phase 4") and **Phase 5** (browser client). See design doc §7.
+Next up (Phases 3 and — bar one conditional item — 4 are done, see below): **Phase 5**
+(browser client). See design doc §7.
 
 ## Then — Phase 3 (interactive mid-turn prompts) — COMPLETE (v1)
 
@@ -540,7 +552,8 @@ bulletins ARE carried.)
 **DECISION (2026-08-09): resolve the remaining Phase-3 items and get the backend
 end-to-end tested BEFORE starting the browser client (Phase 5)** — a fully proven,
 per-empire-correct backend means any bug found while building the browser client is
-purely a client bug. **All four items are now DONE (2026-08-09); 79 tests green, 0 skips.**
+purely a client bug. **All four items are now DONE (2026-08-09).** (Test count has since
+moved on with Phase 4 — 96 green, 0 skips.)
 - **[1] Multi-human alert routing (DONE).** `GameAlert` base gained a `recipient` empire
   (defaults to `player()` when unset, so single-player/desktop are unchanged); each alert's
   `description()` frames from `recipient().sv`, and `create()` returns the instance so call
@@ -612,31 +625,122 @@ the backend/protocol gaps and edge cases carried over from Phases 1–3, plus in
 hosting. Everything here is deferred polish or infra, not a Phase-1/2/3 blocker; the
 solo-and-AI-on-LAN game is fully playable and tested today.
 
+**STATUS (2026-08-09): all six Phase-4 items are DONE** — reserve transfers, browser-grade
+reconnection, contact-via-war, save-mid-council-vote, internet hosting, and the fuller
+diplomacy backend. The last of those was marked *conditional* here ("only if the web client
+wants full MOO diplomacy") and was **built rather than deferred, by decision**: deferring
+backend work into Phase 5 breaks the sign-off guarantee above, because a web client that
+reaches for a missing feature hits a *server* gap, not a client bug. Treat every remaining
+"conditional" backend item the same way. **Phase 5 (browser client) is next.**
+
 **Backend / protocol — resolve before the web client is complete:**
-- **Reserve fund transfers** — spend reserve BC to a colony, and bank a planet's output
-  into the reserve. A real gameplay order the web client will expose; it was prototyped and
-  deliberately pulled, so the Empire Overview shows the reserve read-only. Re-add in
-  `Messages` + `GameServer` (+ `EmpirePanel` in the reference client). Live `TODO`s in
-  `EmpirePanel.java` and `Messages.java`. (Note: ROTP's `addReserve` halves the amount and
-  the reserve auto-fills — see `moo1-differences.md`.)
-- **Reconnection robustness for a browser** — a browser client reconnects constantly
-  (refresh, sleep, flaky networks). Today a client returning under its *original* name
-  rejoins its empire (`ReconnectTest`); a *different* name isn't matched, and brand-new
-  players are rejected mid-game. Firm up the policy (session tokens? empire re-claim rules?)
-  and add browser-grade reconnection tests.
-- **Contact-via-war notification** — an empire met *via* a simultaneous war declaration
-  reports only `CONTACT`, not the war (the war is in `EmpireDto.atWar`, so this is
-  cosmetic). Also emit the DIPLOMACY/war notification.
-- **Save-mid-council-vote** — a save taken while a council vote is open loses the vote
-  (transient vote arrays) and re-convenes on load. Persist or re-derive the open convention.
-- **Fuller diplomacy backend** (only if the web client wants full MOO diplomacy) —
-  counter-offers and tech trades need new commands/protocol; today a human→human offer
-  defers to the other human's accept/decline prompt (increment 2), which is the current v1.
+- **Reserve fund transfers — DONE (2026-08-09).** Both directions. **Out:** `transferReserve
+  {systemId, amount}` → `Empire.allocateReserve` (lossless; the colony spends up to its own
+  production next turn and keeps the surplus banked). **In:** the design question is settled
+  — ROTP has *no* per-planet manual banking, the reserve is filled by an empire-wide tax on
+  colony production (`addReserve(production × colonyTaxPct)`, banked at 50%), so the "add to
+  reserve" order is a **rate, not a transfer**: `setEmpireTax{level, onlyDeveloped}` over
+  `Empire.empireTaxLevel`. View gained `empireTaxLevel`/`maxEmpireTaxLevel`/
+  `empireTaxOnlyDeveloped`/`empireTaxRevenue` and per-colony `reserveIncome`/
+  `maxReserveNeeded`. `EmpirePanel` has the transfer + tax controls (select a colony row,
+  spend BC; tax spinner). Tests: `ReserveTest` (4). The `TODO`s in `EmpirePanel.java` and
+  `Messages.java` are gone. See `moo1-differences.md` §4.
+- **Reconnection robustness for a browser — DONE (2026-08-09).** **Session tokens** are the
+  policy: `Joined.sessionToken` is issued on join and replayed in `Hello.sessionToken`.
+  `GameServer.claimByToken` matches it against `departed` *and* against still-attached
+  connections — so a refresh whose old socket is still open takes over and the stale
+  connection is evicted (only one connection may drive an empire). The token beats the name:
+  a client may return under a different display name. Pre-start the same reclaim keeps the
+  player's lobby slot (`rejoinLobby`) instead of consuming another one, so refreshes can't
+  fill a lobby with ghosts; `Player.host` now carries the host role through a reclaim.
+  Name matching stays as the fallback for token-less clients, and brand-new players are
+  still rejected mid-game. The server also pings every 30s
+  (`setConnectionLostTimeout(30)`) so a slept laptop or dead mobile link is noticed instead
+  of leaving a ghost on the empire. Tests: `ReconnectTest` (5). The browser client should
+  keep the token in `localStorage`.
+- **Contact-via-war notification — DONE (2026-08-09).** `NotificationCenter.diff` used to
+  `continue` past brand-new contacts in the relations loop, so a war that arrived *with* the
+  contact was never reported. A new contact now diffs against `Relations.none()`, emitting
+  CONTACT *and* the DIPLOMACY war note from the same turn. Test:
+  `SpyDiplomacyTest.meetingAnEmpireByItsWarDeclarationReportsTheWarTooNotJustTheContact`.
+- **Save-mid-council-vote — DONE (2026-08-09).** The convention tally in `GalacticCouncil`
+  (`voteIndex`, `votes[]`, `totalVotes`, `votes1/2`, `candidate1/2`, `lastVoter/lastVoted`)
+  is no longer `transient`, so a save taken mid-vote reloads with the convention intact.
+  **The subtle half:** `votes[]` is indexed by the `voters()`/`empires()` ordering, which is
+  *not* faithfully reproducible after a reload (it sorts by population), so those lists
+  persist too and `nextTurn()` only clears them when no convention is open (`conventionOpen()`)
+  — this also fixes a latent drift across an ordinary turn boundary mid-convention. Test:
+  `SaveLoadTest.aCouncilVoteOpenAtSaveTimeSurvivesTheReload` (same candidates, same tally,
+  same next voter, and the resumed vote can be cast). The `councilVoteOpen` guard in
+  `GameServer` still defends the genuine pre-`convene()` case.
+- **Fuller diplomacy backend — DONE (2026-08-09).** Built rather than deferred, because
+  deferring it to Phase 5 would violate the backend sign-off principle (a gap found while
+  building the web client would then be a *backend* bug). The rest of the MOO1 audience
+  screen now rides the wire, hitting the same engine entry points the desktop diplomacy
+  menus call:
+  - **Technology exchange with counter-offers** — a trade is a *negotiation*, not one
+    order, so it is a round trip: `requestTech{empireId, techId}` → the target names a
+    price as `techCounterOffer{requestedTechId, counterOptions[]}` → `counterOfferTech
+    {requestedTechId, offeredTechId}` closes it (or you walk away). Mirrors
+    `DiplomacyTechRequestMenu` → `DiplomacyTechCounterMenu`.
+  - **Human→human requests defer to the human.** `applyRequestTech` checks
+    `!target.decidedByAI()` and, for another human, raises an **INCOMING_TECH_REQUEST**
+    prompt carrying the requested tech plus *their* engine-priced counter options
+    (`techsRequestedForCounter`), answered with `respondTechRequest{requestorId,
+    counterTechId}` (empty = refuse). Without this the target's AI would trade their
+    technology away for them — the same class of bug Phase 3 increment 2 fixed for treaty
+    offers. Interception is at the **command layer, not the engine**: no AIDiplomat gate
+    was touched, so single-player is bit-for-bit unchanged.
+  - **Aid** — `offerAid{empireId, amount | techId}` (money from the reserve, or a
+    technology), and **threats** — `threaten{empireId, EVICT_SPIES | STOP_SPYING |
+    STOP_ATTACKING}`.
+  - **Menu** — `diploOptions{empireId}` → `techTradeMenu` lists exactly what the server
+    would accept right now (`canExchangeTech`/`canOfferAid`/`canThreaten*`, the techs you
+    may request or gift with tier + research cost, the BC amounts you can afford). All of
+    it comes from the diplomat AIs, so the client runs no trade math and sees no tech its
+    spies haven't identified. Prices are **re-derived server-side** on every command — the
+    client's copy of a counter-offer is never trusted.
+  - Client: an **Audience…** button per race card in `RacesPanel`, driving the whole menu.
+  - Tests: `TechTradeTest` (5). **GOTCHA:** `acquireTechThroughTrade` does *not* learn a
+    tech — it records it in `tradedTechs()`, and `TechTree.acquireTradedTechs()` learns it
+    when the turn resolves. Assert on `tradedTechs()` immediately and on `knows()` only
+    after a `ready()`. **GOTCHA 2:** every exchange/gift/threat is gated on the engine's
+    **economic range** (fog distance to their colonies vs scout range), so forced contact
+    alone is *not* enough — and this made the suite flaky before it was understood. The
+    tests now buy the range instead of hoping for it: climb the whole fuel-range ladder
+    (`extendRange`), `sv.refreshFullScan` each side's colonies, and — for the two-human
+    test, whose empires can't be chosen — plant a colony next door (`settleNextDoor`)
+    rather than let star placement decide whether the most important test runs.
+  - **AI→human requests defer too.** The one place an engine change *was* needed: an AI's
+    own `makeDiplomaticOffers` tech path calls `receiveRequestTech` directly, which would
+    have let a remote human's AI trade their technology away mid-turn without asking. All
+    three `AIDiplomat` variants gained an `isRemoteHuman()` branch that queues the request
+    (`DiplomaticNotification.createTechRequest`, carrying the tech id) and returns null, so
+    the asking AI walks away with no deal; `GameServer.collectTechRequestPrompt` turns it
+    into the same INCOMING_TECH_REQUEST prompt. **No-op for single-player** — the
+    `isPlayerControlled()` modal branch above it is untouched, and `isRemoteHuman()` is
+    false there.
+  - Still v1 (not a gap in this class — nothing auto-resolves behind a human's back):
+    joint-war offers and their counter-reply are not on the wire yet.
 
 **Infrastructure:**
-- **Internet hosting** — the server must be reachable over the internet (NAT traversal /
-  relay / a hosted deployment) for a real online web-client game. This is the classic
-  Phase-4 goal and a hard prerequisite for Phase 5.
+- **Internet hosting — DONE (2026-08-09), decision + plumbing.** Target is the **Oracle
+  Cloud Always Free Ampere A1 ARM VM (4 OCPU / 24 GB)** running the plain fat JAR — no
+  container (the shade plugin already produces a runnable JAR; Docker would be overkill).
+  One JVM hosts one game (the engine has a process-wide `GameSession`), so N games = N
+  processes on N ports; at `-Xmx2g` that VM fits about six. New server args: `bind=` (listen
+  on loopback behind a proxy), `keystore=`/`keystorePassword=` (serve `wss://` from the JVM
+  itself; a bad keystore **fails startup** rather than silently serving plain `ws://`), and
+  `savedir=` (per-game save dir, set without rewriting the shared prefs file via
+  `UserPreferences.saveDirForThisProcess`). TLS recommendation is **Caddy in front** (a
+  single static binary, auto-renews Let's Encrypt, and a renewal reloads *Caddy* — renewing
+  inside each JVM would mean restarting it, ending the game in progress). Ships
+  `deploy/rotp-game@.service` (systemd template, one instance per game) +
+  `deploy/game-1.env.example` + **`docs/deployment.md`** (build, host layout, TLS both ways,
+  and Oracle's *two* firewall layers — VCN security list and the instance's own iptables).
+  Smoke-tested end to end: loopback bind verified with `lsof`, a real TLSv1.3 handshake
+  served from a PKCS12 keystore, and the bad-keystore path failing before it listens.
+  Tests: `DeploymentTest` (3).
 
 **Belongs to Phase 5 (web client), NOT Phase-4 backend work** — these use the
 already-complete backend (listed here so they aren't mistaken for backend gaps):
@@ -679,9 +783,7 @@ research).
   spec's §5 for a future pass.
 
 Phases 2 (reconnection, MP save/load, lobby race picks) and 3 (interactive mid-turn
-prompts with turn timers) are complete; **next is Phase 4 (finish the outstanding backend
-items + internet hosting — see "Then — Phase 4") and Phase 5 (browser client)**. See design
-doc §7.
+prompts with turn timers) are complete, and Phase 4 is complete; **next is Phase 5 (browser client)**. See design doc §7.
 
 ## Gotchas the tests and code already encode (don't relearn these the hard way)
 
@@ -691,6 +793,21 @@ doc §7.
   remote humans it now fires only on unallocated ticks (new colonies). **Command
   handlers must never call `col.hasNewOrders(true)`** or wire orders get silently
   rewritten to AI patterns.
+- **Deferral is the multiplayer rule, and it has two shapes.** Anything the engine would
+  auto-resolve for an empire must not auto-resolve for a *remote human*. Where the decision
+  arrives as a **command** (a human asking another human for a tech), intercept it in
+  `GameServer` on `!target.decidedByAI()` — no engine change needed, so single-player cannot
+  regress. Where the engine initiates it **mid-turn** (an AI's `makeDiplomaticOffers`, an
+  incoming treaty offer, a council vote), the engine site itself must gate — on
+  `!decidedByAI()` or `isRemoteHuman()` — queue a notification, and return null so the
+  caller walks away with no deal. Prefer the command layer whenever the choice is available.
+- **Traded techs are not learned on the spot.** `acquireTechThroughTrade` only records the
+  tech in `tradedTechs()`; `TechTree.acquireTradedTechs()` learns it during turn processing.
+  Anything asserting on a completed trade must advance a turn first.
+- **Economic range gates all diplomacy.** `canExchangeTechnology` / `canOfferAid` /
+  `canThreaten*` all require `inEconomicRange`, which compares fog-of-war distance to their
+  colonies against scout range. Two empires can be in contact and still unable to trade —
+  it is not a bug, and tests must engineer the range rather than assume it.
 - **Colonize choice (Phase 3 increment 4).** A remote human's colony ship no longer
   auto-settles — arrival at a colonizable system raises a COLONIZE prompt, resolved with
   the `colonize` command (see `AI.checkColonize` gated on `decidedByAI()`). AI empires
@@ -727,11 +844,17 @@ doc §7.
   (clickable map), `ColonyPanel` (colony screen), `ColonyAllocations` (pure spending
   logic), `RacesPanel` + `Diplomacy` (diplomacy screen + pure legality rules).
   DTO-rendered, no game model on the client.
-- Reconnection lives in `GameServer` (`departed` map, `onClose`, `handleHello` →
-  `reconnect`); the lobby galaxy-size pick in `GameServer.sizeOptions()` +
-  `handleStartGame`, surfaced via `Messages.SizeOptions` / `StartGame.galaxySize`.
+- Reconnection lives in `GameServer` (`departed` map, `Player.token`, `claimByToken`,
+  `onClose`, `handleHello` → `reconnect` / `rejoinLobby`); the lobby galaxy-size pick in
+  `GameServer.sizeOptions()` + `handleStartGame`, surfaced via `Messages.SizeOptions` /
+  `StartGame.galaxySize`.
+- Fuller diplomacy lives in `GameServer` (`handleDiploOptions`, `applyRequestTech`,
+  `applyCounterOfferTech`, `applyRespondTechRequest`, `applyOfferAid`, `applyThreaten`,
+  `pendingTechRequests`, `collectTechRequestPrompt`) and `RacesPanel` (the Audience menu).
 - `itest/rotp/mp/` — integration tests + `MpTestSupport` harness (new:
   `RacesScreenTest`, `ReconnectTest`, `GalaxySizeTest`, `DifficultyTest`,
-  `SaveLoadTest`).
+  `SaveLoadTest`; Phase 4 added `ReserveTest`, `DeploymentTest` and `TechTradeTest`).
+- `deploy/` + `docs/deployment.md` — Phase-4 hosting: systemd template unit, per-game env
+  file, and the Oracle Cloud ARM / Caddy / TLS runbook.
 - Engine seams: `rotp.model.game.SessionUI`; `Empire.decidedByAI/isRemoteHuman`;
   moved statics in `Rotp` (scaling, debug file) and `GameSession` (pending options).
