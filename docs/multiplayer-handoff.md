@@ -48,7 +48,7 @@ Phase 5): **joint war offers**. Plus **server error-hardening** as a standing re
 (anything that could cause an error on the server must be resolved before Phase 5). Hosting moved to **Phase 6** (Scaleway for initial testing;
 it also owes a front end that spins up a JVM per game). **Phase 5 is a separate private
 repo**, not under the ROTP licence.
-**108 tests green, 1 skip (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
+**114 tests green, 1 skip (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
 
 ## Where we are
 
@@ -71,7 +71,7 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **108 JUnit integration tests green, 1 skip (incl. 2-human end-to-end).**
+projections and per-category locks**. **114 JUnit integration tests green, 1 skip (incl. 2-human end-to-end).**
 
 **Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is complete for v1** — all seven
 increments (interactive tech selection; incoming diplomacy; council vote; colonize choice;
@@ -584,7 +584,7 @@ bulletins ARE carried.)
 end-to-end tested BEFORE starting the browser client (Phase 5)** — a fully proven,
 per-empire-correct backend means any bug found while building the browser client is
 purely a client bug. **All four items are now DONE (2026-08-09).** (Test count has since
-moved on with Phase 4 — 108 green, 1 skip.)
+moved on with Phase 4 — 114 green, 1 skip.)
 - **[1] Multi-human alert routing (DONE).** `GameAlert` base gained a `recipient` empire
   (defaults to `player()` when unset, so single-player/desktop are unchanged); each alert's
   `description()` frames from `recipient().sv`, and `create()` returns the instance so call
@@ -633,8 +633,15 @@ NOTE (test env, 2026-08-09): the whole `mvn test` in one shot can wedge on this 
 under load (maven leaves a surefire fork that stops reporting; the timing-sensitive 2-human
 tests then hit their 120s timeouts). It bites *batched* runs too if something else is
 compiling at the same time — if a batch stops producing reports, `pkill -f surefire` and
-re-run rather than waiting it out. Running the mp tests in a few `-Dtest=A,B,C` batches
-is fast and reliable — all 79 pass that way; individual/batched runs are the source of
+re-run rather than waiting it out. Killed forks also accumulate and make the next run
+likelier to wedge, so clear them out before retrying.
+
+**The reliable way to get a full clean pass** (used 2026-08-09 for all 35 classes, 114
+tests, 0 failures): run **one class per `mvn` invocation with a watchdog**, so a wedge
+costs that class alone instead of stalling the rest —
+`scratchpad/fullrun.sh` is the loop; roughly `mvn -q test -Dtest=$T & P=$!;
+( sleep 420; kill -9 $P; pkill -9 -f surefire ) & wait $P`. Slower than batching, but it
+finishes. Batches of `-Dtest=A,B,C` are fine when the machine is quiet — all 79 pass that way; individual/batched runs are the source of
 truth, not a single stalled full-suite invocation.
 
 Phase 3 has no open blockers. The outstanding items (backend gaps + edge cases from every
@@ -783,13 +790,6 @@ See **"Then — Phase 4 — what is still missing"** for the outstanding list.
   Tests: `DeploymentTest` (3).
 
 ### Then — Phase 4 — what is still missing
-
-**REGRESSION NOTE (2026-08-09): the espionage changes were verified against the classes
-that exercise them** — `SpyDiplomacyTest`, `CombatSpyAlertTest`, `StealTechPromptTest`,
-`SabotagePromptTest`, all green — plus 24 further classes with 0 failures. The full
-35-class suite could **not** be completed in one pass: the machine wedged repeatedly (see
-the test-env note), so roughly 10 classes unrelated to `SpyNetwork` are unverified against
-this change. Worth a clean full run before the next commit lands on top.
 
 **Not yet validated by human-vs-human play.** Everything below and everything already
 landed is proven only by in-process tests, where latency is zero and both clients share a
