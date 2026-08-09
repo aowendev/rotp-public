@@ -128,13 +128,13 @@ public class NotificationCenter {
             if (!prev.contacted.contains(empId))
                 out.add(note("CONTACT", "Made first contact with " + empName(empId), -1, empId));
 
-        // diplomatic transitions with already-contacted empires
+        // diplomatic transitions. A brand-new contact diffs against "no relations",
+        // so an empire met *via* a war declaration reports the war as well as the
+        // contact (its CONTACT note is already emitted above).
         for (Map.Entry<Integer, Relations> e : cur.diplo.entrySet()) {
             int empId = e.getKey();
             Relations now = e.getValue();
-            Relations was = prev.diplo.get(empId);
-            if (was == null)
-                continue;   // brand-new contact already reported above
+            Relations was = prev.diplo.getOrDefault(empId, Relations.none());
             String name = empName(empId);
             if (now.war && !was.war)
                 out.add(note("DIPLOMACY", "Now at war with " + name, -1, empId));
@@ -226,6 +226,10 @@ public class NotificationCenter {
         final boolean war, pact, alliance, peace;
         private Relations(boolean war, boolean pact, boolean alliance, boolean peace) {
             this.war = war; this.pact = pact; this.alliance = alliance; this.peace = peace;
+        }
+        /** the baseline for an empire you had not met: no treaties, no war */
+        static Relations none() {
+            return new Relations(false, false, false, false);
         }
         static Relations of(EmpireView ev) {
             return new Relations(ev.embassy().anyWar(), ev.embassy().pact(),

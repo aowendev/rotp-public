@@ -336,6 +336,23 @@ public final class MpTestSupport {
                     return n;
         return null;
     }
+    /** every queued notification, flattened — drain once when a test asserts on
+     * more than one category from the same turn */
+    public static java.util.List<Messages.Notification> allNotifications(Client c) {
+        java.util.List<Messages.Notification> out = new java.util.ArrayList<>();
+        for (Messages.Notifications ns : drain(c.notifications))
+            out.addAll(ns.items);
+        return out;
+    }
+
+    /** true if the given already-drained notifications carry the category */
+    public static boolean hasCategory(java.util.List<Messages.Notification> notes, String category) {
+        for (Messages.Notification n : notes)
+            if (category.equals(n.category))
+                return true;
+        return false;
+    }
+
 
     /** the first drained Prompt of the given type, or null if none has arrived */
     public static Messages.Prompt firstPrompt(Client c, String type) {

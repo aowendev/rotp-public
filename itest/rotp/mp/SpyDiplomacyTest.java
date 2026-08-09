@@ -57,6 +57,37 @@ public class SpyDiplomacyTest {
         return null;
     }
 
+    /**
+     * Phase 4: an empire you meet *via* its war declaration used to report only
+     * CONTACT — the relationship diff skipped brand-new contacts entirely, so the
+     * war never surfaced as news. Both must arrive from the same turn's diff.
+     */
+    @Test
+    @Timeout(120)
+    void meetingAnEmpireByItsWarDeclarationReportsTheWarTooNotJustTheContact() throws Exception {
+        server = MpTestSupport.startServer(1);
+        alice = new Client(server.port, "Alice");
+        PlayerView v = alice.awaitView();
+
+        Empire human = GameSession.instance().galaxy().empire(v.empireId);
+        Empire aggressor = firstForeignEmpire(human);
+        assumeTrue(aggressor != null, "no other empire in this game");
+
+        // contact and war land in the same turn, as they do when an empire's first
+        // act on meeting you is to declare war
+        MpTestSupport.drain(alice.notifications);
+        human.makeContact(aggressor);
+        aggressor.makeContact(human);
+        aggressor.viewForEmpire(human).embassy().declareWar();
+
+        alice.ready();
+        java.util.List<Messages.Notification> notes = MpTestSupport.allNotifications(alice);
+        assertTrue(MpTestSupport.hasCategory(notes, "CONTACT"), "first contact reported");
+        assertTrue(MpTestSupport.hasCategory(notes, "DIPLOMACY"),
+            "the war that came with the contact is reported too");
+        assertTrue(MpTestSupport.empire(alice.lastView, aggressor.id).atWar, "view shows the war");
+    }
+
     @Test
     @Timeout(120)
     void aHumanCanSetAnEspionageFramePreference() throws Exception {
