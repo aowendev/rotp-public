@@ -84,6 +84,15 @@ rotp.example.com {
 Caddy upgrades WebSocket connections through `reverse_proxy` with no extra
 configuration. The web client then connects to `wss://rotp.example.com/game/1`.
 
+The Java reference client speaks the same URL, which is how you test a hosted
+game before the browser client exists:
+
+```bash
+java -jar rotp.jar --client url=wss://rotp.example.com/game/1 name=Alice
+```
+
+(`host=`/`port=` still work for a plain `ws://` LAN game.)
+
 ### TLS inside the JVM (no proxy)
 
 For a single self-contained process — a player hosting one game for friends:

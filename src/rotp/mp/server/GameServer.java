@@ -121,6 +121,7 @@ public class GameServer extends WebSocketServer {
         int empireId = -1;
         boolean ready = false;
         boolean host = false;   // may start the game from the lobby
+        boolean notifiedGameOver = false;   // their verdict has been sent
         String raceId;   // race picked in the lobby (defaulted on join)
     }
 
@@ -804,8 +805,10 @@ public class GameServer extends WebSocketServer {
         synchronized (this) {
             if (!gameStarted || turnRunning || gameEnded || players.isEmpty())
                 return;
+            // an eliminated human has no orders to give; watching the rest of the
+            // game must not mean holding it up forever
             for (Player p : players.values())
-                if (!p.ready)
+                if (!p.ready && stillPlaying(p))
                     return;
             turnRunning = true;
         }
@@ -879,6 +882,7 @@ public class GameServer extends WebSocketServer {
                 // finish any council vote a human left unanswered before advancing, so
                 // the convention closes (using AI defaults) instead of re-convening
                 finalizePendingCouncilVote();
+                keepGalaxyTurning();
                 session.nextTurn();
                 // nextTurn() spawns the turn thread; wait for it to finish
                 while (session.performingTurn())
@@ -1945,41 +1949,114 @@ public class GameServer extends WebSocketServer {
     // ---- game over ----
 
     /**
-     * After a turn, tell each empire whether it won, lost, or was destroyed.
-     * The engine's global GameStatus is evaluated from empire 0's perspective
-     * (the "player"), so its win/loss is authoritative for empire 0 and for the
-     * solo game. Any other human's *defeat* is still detected per-empire via
-     * extinction. Per-empire victory for multi-human games needs a deeper engine
-     * change and is deferred.
+     * After a turn, tell each empire whether it won, lost, or was destroyed —
+     * **per empire** (see {@link GameOutcomes}). The engine's global GameStatus is
+     * written from {@code player()}'s point of view, so it can only ever describe
+     * empire 0; every other human used to be told a neutral "the game ended", even
+     * when they were the one who had just conquered the galaxy.
+     *
+     * Each player is told once: {@code notifiedGameOver} remembers who has already
+     * had their verdict, so a human watching the rest of the game is not told again
+     * every turn.
      */
     private void checkGameOver() {
         if (gameEnded)
             return;
         rotp.model.game.GameStatus st;
+        boolean decided;
         synchronized (gameLock) {
             st = GameSession.instance().status();
+            decided = GameOutcomes.galaxyDecided(galaxy());
         }
-        boolean over = !st.inProgress();
+        boolean engineOver = !st.inProgress();
         synchronized (this) {
             for (Map.Entry<WebSocket, Player> e : players.entrySet()) {
-                Empire emp = galaxy().empire(e.getValue().empireId);
-                boolean extinct = (emp == null) || emp.extinct();
-                Messages.GameOver go = null;
-                if ((e.getValue().empireId == 0) && over)
-                    go = gameOverForPlayer(st);
-                else if (extinct)
-                    go = gameOver(false, "DEFEATED", "Your empire has been destroyed.");
-                else if (over)
+                Player p = e.getValue();
+                if (p.notifiedGameOver)
+                    continue;
+                Empire emp = galaxy().empire(p.empireId);
+                GameOutcomes.Outcome o;
+                synchronized (gameLock) {
+                    o = GameOutcomes.forEmpire(galaxy(), emp);
+                }
+                Messages.GameOver engineVerdict =
+                    ((p.empireId == 0) && engineOver) ? gameOverForPlayer(st) : null;
+                Messages.GameOver go;
+                if (o != null) {
+                    // the per-empire verdict is the truth. Empire 0 keeps the engine's
+                    // wording when the two agree, because it carries reasons the server
+                    // cannot re-derive (overthrown, New Republic, rebellion) — but the
+                    // global status is written last-writer-wins across all empires, so
+                    // when they disagree it is the one that is wrong.
+                    go = ((engineVerdict != null) && (engineVerdict.won == o.won))
+                        ? engineVerdict : gameOver(o.won, o.reason, o.text);
+                }
+                else if (engineVerdict != null)
+                    go = engineVerdict;          // status forced with no empire actually lost
+                else if (engineOver && decided)
                     go = gameOver(false, "GAME_OVER", "The game has ended.");
-                if (go != null)
+                else
+                    go = null;
+                if (go != null) {
+                    p.notifiedGameOver = true;
                     send(e.getKey(), Protocol.encode(go));
+                }
             }
         }
-        if (over) {
-            gameEnded = true;   // a win/loss was reached; stop resolving turns
+        // Stop resolving turns when the galaxy is settled, or when every connected
+        // human has been given a verdict. One human losing does NOT end it — the
+        // survivors play on, which is the whole point of a multi-human game. A solo
+        // game still ends the moment its one player has an outcome.
+        if (decided || allHumansHaveTheirVerdict()) {
+            gameEnded = true;
             System.out.println("[server] game over ("
-                + (st.won() ? "player won" : st.lost() ? "player lost" : "ended") + ")");
+                + (decided ? "galaxy decided" : "all players resolved") + ")");
         }
+    }
+
+    /**
+     * The engine stops processing turns the moment its global status leaves
+     * IN_PROGRESS ({@code GameSession.nextTurnProcess} bails on {@code !inProgress()}),
+     * and that status is written from empire 0's point of view — so empire 0 dying
+     * froze the whole galaxy for every other human. That status is a single-player
+     * concept the server has already replaced with per-empire outcomes
+     * ({@link GameOutcomes}), so put it back and let the survivors play on.
+     *
+     * Narrow on purpose: it only steps in when **empire 0 itself is gone**, which is
+     * exactly when the global status is describing a dead empire while others play on.
+     * A status set while empire 0 is still alive is either a real solo ending or a test
+     * forcing one, and {@code checkGameOver} must be left to deliver it — clearing it
+     * here would swallow the verdict and the game would never end.
+     *
+     * Callers hold the game lock.
+     */
+    private void keepGalaxyTurning() {
+        if (GameSession.instance().status().inProgress())
+            return;
+        Empire zero = galaxy().empire(0);
+        if ((zero == null) || !zero.extinct())
+            return;
+        if (GameOutcomes.galaxyDecided(galaxy()))
+            return;
+        GameSession.instance().status().startGame();
+        System.out.println("[server] a player is out, but the game continues");
+    }
+
+    private synchronized boolean allHumansHaveTheirVerdict() {
+        if (players.isEmpty())
+            return false;
+        for (Player p : players.values())
+            if (!p.notifiedGameOver)
+                return false;
+        return true;
+    }
+
+    /** whether this player's empire is still in the game (callers hold the monitor) */
+    private boolean stillPlaying(Player p) {
+        if (!gameStarted)
+            return true;
+        Empire emp = galaxy().empire(p.empireId);
+        return (emp != null) && !emp.extinct();
     }
 
     private static Messages.GameOver gameOverForPlayer(rotp.model.game.GameStatus st) {
@@ -2290,10 +2367,15 @@ public class GameServer extends WebSocketServer {
         ts.processing = turnRunning;
         ts.turn = gameStarted ? galaxy().currentTurn() : 0;
         synchronized (this) {
-            ts.totalPlayers = players.size();
-            for (Player p : players.values())
+            // count only players the turn is actually waiting on, so "1/2 ready"
+            // never sits there waiting on someone whose empire is gone
+            for (Player p : players.values()) {
+                if (!stillPlaying(p))
+                    continue;
+                ts.totalPlayers++;
                 if (p.ready)
                     ts.readyCount++;
+            }
         }
         ts.note = note;
         ts.secondsRemaining = secondsRemaining();

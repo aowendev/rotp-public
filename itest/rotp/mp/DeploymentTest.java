@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 
 import rotp.model.game.IGameOptions;
+import rotp.mp.client.ClientMain;
 import rotp.mp.server.GameServer;
 import rotp.mp.server.ServerMain;
 
@@ -69,6 +70,24 @@ public class DeploymentTest {
         assertNull(ServerMain.stringArg(args, "keystore", null), "absent args keep their default");
         assertFalse("s3cret".equals(ServerMain.stringArg(args, "keystore", null)),
             "keystorePassword= is not mistaken for keystore=");
+    }
+
+    /** the client has to be able to *reach* a hosted game, not just a LAN host:port */
+    @Test
+    void theClientAcceptsAFullWebSocketUrlAsWellAsHostAndPort() {
+        assertEquals("ws://localhost:8777",
+            ClientMain.serverUrl(new String[]{"--client"}), "defaults to a local ws:// game");
+        assertEquals("ws://192.168.1.20:8778",
+            ClientMain.serverUrl(new String[]{"--client", "host=192.168.1.20", "port=8778"}),
+            "host+port still builds a plain LAN address");
+        // a hosted game lives at a path behind a TLS proxy, which host:port cannot express
+        assertEquals("wss://rotp.example.com/game/1",
+            ClientMain.serverUrl(new String[]{"--client", "url=wss://rotp.example.com/game/1"}),
+            "an explicit url reaches a proxied, TLS-terminated game");
+        assertEquals("wss://rotp.example.com/game/2",
+            ClientMain.serverUrl(new String[]{"--client", "host=ignored", "port=1",
+                                              "url=wss://rotp.example.com/game/2"}),
+            "an explicit url wins over host+port");
     }
 
     static { System.setProperty("java.awt.headless", "true"); }

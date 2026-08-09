@@ -39,7 +39,7 @@ host turn-timer lobby pick, and a 2-human end-to-end test foundation. **Phase 4 
 session tokens, contact-via-war notification, a council vote that survives save/load, and
 internet hosting (Oracle Cloud ARM, plain JAR, one JVM per game — `docs/deployment.md`). Includes the fuller diplomacy backend (tech exchange with counter-offers, aid, threats), built
 rather than deferred so no Phase-5 discovery can be a backend bug. **Next: Phase 5 (browser client).**
-**96 tests green, 0 skips (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
+**101 tests green, 0 skips (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
 
 ## Where we are
 
@@ -60,7 +60,7 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **96 JUnit integration tests, green, 0 skips (incl. 2-human end-to-end).**
+projections and per-category locks**. **101 JUnit integration tests, green, 0 skips (incl. 2-human end-to-end).**
 
 **Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is complete for v1** — all seven
 increments (interactive tech selection; incoming diplomacy; council vote; colonize choice;
@@ -79,7 +79,7 @@ and the Phase-3 prompt/notification increments are committed on top of it.
 > JSON-over-WebSocket protocol. Outstanding items (backend gaps + edge cases + internet
 > hosting) are gathered under **"Then — Phase 4"** as the work to finish before the web
 > client is done — all deferred polish or infra, not blockers; **all six are now done**
-> (2026-08-09). 96 integration tests green
+> (2026-08-09). 101 integration tests green
 > (run in batches — see the test-env note there).
 
 ## Run it
@@ -113,6 +113,9 @@ java -cp "target/classes:$(cat cp.txt)" rotp.Rotp
 mvn package
 java -Xmx2g -jar target/rotp-*.jar --server port=8777 players=2 \
      bind=127.0.0.1 savedir=/var/lib/rotp/game-1
+# ...and connect to it from another machine (url= takes a full ws:// or wss://
+# URL, so it reaches a game behind a TLS proxy at a path, not just host:port)
+java -jar target/rotp-*.jar --client url=wss://rotp.example.com/game/1 name=Alice
 ```
 
 ## What works (done + tested)
@@ -315,9 +318,9 @@ Known backlog:
    outcome: empire 0 gets the specific win/loss reason; any human whose empire
    went extinct gets `DEFEATED`; other surviving humans get a neutral `GAME_OVER`.
    `gameEnded` then stops further turn resolution. Client pops a Victory/Game Over
-   dialog. See `GameOverTest`. **Not** covered: independent per-empire victory for
-   multi-human games (needs an engine change to evaluate win/loss from each human's
-   perspective) — do it with the deeper multiplayer work.
+   dialog. See `GameOverTest`. **SUPERSEDED (2026-08-09): per-empire outcomes are in** —
+   see "Multi-human outcomes" below; every human now gets their own verdict, and no
+   engine change was needed.
 5. **Scout-exploration convenience — DONE, folded into #3** (per-ship dispatch,
    click-to-target, System info tab, range indicators).
 
@@ -553,7 +556,7 @@ bulletins ARE carried.)
 end-to-end tested BEFORE starting the browser client (Phase 5)** — a fully proven,
 per-empire-correct backend means any bug found while building the browser client is
 purely a client bug. **All four items are now DONE (2026-08-09).** (Test count has since
-moved on with Phase 4 — 96 green, 0 skips.)
+moved on with Phase 4 — 101 green, 0 skips.)
 - **[1] Multi-human alert routing (DONE).** `GameAlert` base gained a `recipient` empire
   (defaults to `player()` when unset, so single-player/desktop are unchanged); each alert's
   `description()` frames from `recipient().sv`, and `create()` returns the instance so call
@@ -563,8 +566,10 @@ moved on with Phase 4 — 96 green, 0 skips.)
   Sabotage bases/factories, Espionage tech-steal, Trespassing. Server: `pendingAlerts` is
   keyed by recipient empire id; each empire gets its own alerts. Test:
   `CombatSpyAlertTest.aCombatAlertIsRoutedToTheAffectedHumanNotEveryone` (Bob/empire 1
-  perishes transports → Bob gets the ALERT, Alice/empire 0 does not). SpyReportAlert stays
-  empire-0 (its SpyNetwork gate is `isPlayer()`), a documented minor limitation.
+  perishes transports → Bob gets the ALERT, Alice/empire 0 does not). (The note that
+  SpyReportAlert stays empire-0 is stale: `GameSession` already loops `spyReportEmpires()`
+  and raises a `SpyReportAlert().recipient(owner)` per empire, so spy reports route
+  per-empire too — see the SPY note below.)
 - **[2] GNN ranking bulletins (DONE).** `GNNRankingNotification` implements `PublicNews`;
   `newsText()` appends the ranked empires (list sorted strongest-first) to the title, and
   the existing `collectPublicNews` path broadcasts it as NEWS. Test:
@@ -598,7 +603,9 @@ per-empire.
 
 NOTE (test env, 2026-08-09): the whole `mvn test` in one shot can wedge on this machine
 under load (maven leaves a surefire fork that stops reporting; the timing-sensitive 2-human
-tests then hit their 120s timeouts). Running the mp tests in a few `-Dtest=A,B,C` batches
+tests then hit their 120s timeouts). It bites *batched* runs too if something else is
+compiling at the same time — if a batch stops producing reports, `pkill -f surefire` and
+re-run rather than waiting it out. Running the mp tests in a few `-Dtest=A,B,C` batches
 is fast and reliable — all 79 pass that way; individual/batched runs are the source of
 truth, not a single stalled full-suite invocation.
 
@@ -754,6 +761,53 @@ already-complete backend (listed here so they aren't mistaken for backend gaps):
 - **Mac-port interaction feel** — reproduce the 1990s Mac port's menus/⌘-shortcuts (see
   `mac-ux-spec.md`) in the browser client.
 
+## Multi-human outcomes — DONE (2026-08-09)
+
+Everything above makes a *game* work over the wire; this is what makes a game with
+**more than one human** work, ahead of a real two-machine test. Three faults, all from
+the same root: the engine's single `GameStatus` is written from `player()`'s point of
+view, so it can only ever describe empire 0.
+
+- **Every human gets their own verdict.** New `rotp.mp.server.GameOutcomes` decides
+  win/loss **per empire** — extinction, sole survivor, allied with every survivor,
+  council leader / council ally / council loser — mirroring the engine's rules with
+  "the player" replaced by "this empire". Pure and static, so it is unit-testable and
+  mutates nothing. Same philosophy as `PlayerViews` and `NotificationCenter`: the
+  server owns every empire, so it works out each one's events itself rather than
+  reusing single-player machinery. Previously a second human who *conquered the
+  galaxy* was told only "the game has ended".
+  Empire 0 still prefers the engine's wording when the two agree, because it carries
+  reasons the server cannot re-derive (overthrown, New Republic, rebellion) — but the
+  global status is last-writer-wins across all empires, so when they **disagree** the
+  per-empire verdict is the truth. (Concretely: wiping out everyone except empire 1
+  leaves the global status reading WIN_MILITARY, which would have told the *destroyed*
+  empire 0 that it won.)
+- **One human losing no longer ends everyone's game.** `gameEnded` is now set when the
+  *galaxy* is decided (`GameOutcomes.galaxyDecided`) or when every connected human has
+  had their verdict — not when empire 0's status stops being IN_PROGRESS.
+- **...and no longer freezes the galaxy.** The real blocker: `GameSession.nextTurnProcess`
+  bails on `!inProgress()`, so once empire 0 died the engine silently stopped processing
+  turns — the turn counter simply never advanced for anyone. `GameServer.keepGalaxyTurning()`
+  restores the status before each turn while the game is still live for someone. Server-side
+  only; single-player never reaches it.
+- **An eliminated human stops holding up the turn.** `maybeRunTurn` and the ready tally
+  now skip players whose empire is gone (`stillPlaying`), so a defeated player watching
+  the rest of the game does not block it forever, and the status never reads "1/2 ready"
+  waiting on a dead empire.
+
+- **The reference client can reach a hosted game.** `--client url=ws(s)://host/path`
+  alongside the existing `host=`/`port=`, because a game behind the Caddy proxy lives at
+  a *path on 443*, which host:port cannot express. This is how a two-machine test is run
+  before the browser client exists (`ClientMain.serverUrl`, covered in `DeploymentTest`).
+
+Tests: `MultiHumanOutcomeTest` (4) — the second human is told they won; one human's
+elimination neither ends nor freezes the other's game; the dead empire is out of the
+ready tally; plus the pure rules.
+
+**Ready for a two-machine test.** What has *not* been exercised: two real machines over
+a real network. Everything above is proven in-process, where latency is zero and both
+clients share a JVM.
+
 Then **Phase 5: the browser client.**
 
 Reminders for any further screen/order work: keep pure rendering-independent logic
@@ -848,12 +902,16 @@ prompts with turn timers) are complete, and Phase 4 is complete; **next is Phase
   `onClose`, `handleHello` → `reconnect` / `rejoinLobby`); the lobby galaxy-size pick in
   `GameServer.sizeOptions()` + `handleStartGame`, surfaced via `Messages.SizeOptions` /
   `StartGame.galaxySize`.
+- Per-empire win/loss lives in `rotp.mp.server.GameOutcomes` (pure), used by
+  `GameServer.checkGameOver`; `keepGalaxyTurning` and `stillPlaying` keep a multi-human
+  game running after one player is knocked out.
 - Fuller diplomacy lives in `GameServer` (`handleDiploOptions`, `applyRequestTech`,
   `applyCounterOfferTech`, `applyRespondTechRequest`, `applyOfferAid`, `applyThreaten`,
   `pendingTechRequests`, `collectTechRequestPrompt`) and `RacesPanel` (the Audience menu).
 - `itest/rotp/mp/` — integration tests + `MpTestSupport` harness (new:
   `RacesScreenTest`, `ReconnectTest`, `GalaxySizeTest`, `DifficultyTest`,
-  `SaveLoadTest`; Phase 4 added `ReserveTest`, `DeploymentTest` and `TechTradeTest`).
+  `SaveLoadTest`; Phase 4 added `ReserveTest`, `DeploymentTest`, `TechTradeTest` and
+  `MultiHumanOutcomeTest`).
 - `deploy/` + `docs/deployment.md` — Phase-4 hosting: systemd template unit, per-game env
   file, and the Oracle Cloud ARM / Caddy / TLS runbook.
 - Engine seams: `rotp.model.game.SessionUI`; `Empire.decidedByAI/isRemoteHuman`;

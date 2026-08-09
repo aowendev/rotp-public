@@ -38,22 +38,37 @@ import rotp.mp.protocol.PlayerView;
 import rotp.mp.server.ServerMain;
 
 /**
- * Walking-skeleton multiplayer client:
+ * Multiplayer reference client:
  *   java -jar rotp.jar --client [host=localhost] [port=8777] [name=Player]
+ *   java -jar rotp.jar --client url=wss://rotp.example.com/game/1 name=Alice
  *
- * Connects to a server, joins the lobby, and renders the galaxy from
- * PlayerView JSON. The real game screens join the protocol in Phase 1.
+ * Connects to a server, joins the lobby, and renders every screen from
+ * PlayerView JSON, holding no game model of its own.
+ *
+ * `url=` is the form to use against a hosted server: a game behind a
+ * TLS-terminating proxy lives at a path on 443 rather than a bare host:port
+ * (see docs/deployment.md), and it must be wss:// — a browser on https cannot
+ * open a plain ws:// socket, so the deployed server speaks wss only.
  */
 public class ClientMain {
     public static void run(String[] args) {
-        String host = ServerMain.stringArg(args, "host", "localhost");
-        int port = ServerMain.intArg(args, "port", ServerMain.DEFAULT_PORT);
+        String serverUrl = serverUrl(args);
         String name = ServerMain.stringArg(args, "name", System.getProperty("user.name", "Player"));
-
-        SwingUtilities.invokeLater(() -> createUI(host, port, name));
+        SwingUtilities.invokeLater(() -> createUI(serverUrl, name));
     }
 
-    private static void createUI(String host, int port, String name) {
+    /** the WebSocket URL to connect to: an explicit url= wins, else host+port
+     * as a plain ws:// address (pure, so it is unit-tested) */
+    public static String serverUrl(String[] args) {
+        String url = ServerMain.stringArg(args, "url", null);
+        if ((url != null) && !url.isEmpty())
+            return url;
+        String host = ServerMain.stringArg(args, "host", "localhost");
+        int port = ServerMain.intArg(args, "port", ServerMain.DEFAULT_PORT);
+        return "ws://" + host + ":" + port;
+    }
+
+    private static void createUI(String serverUrl, String name) {
         JFrame frame = new JFrame("ROTP Multiplayer - "+name);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
@@ -68,7 +83,7 @@ public class ClientMain {
         ShipDesignPanel shipDesignPanel = new ShipDesignPanel(order -> clientHolder[0].sendMessage(order));
         EmpirePanel empirePanel = new EmpirePanel(order -> clientHolder[0].sendMessage(order));
         RacesPanel racesPanel = new RacesPanel(order -> clientHolder[0].sendMessage(order));
-        JLabel status = new JLabel("Connecting to "+host+":"+port+"...");
+        JLabel status = new JLabel("Connecting to "+serverUrl+"...");
         JButton nextTurn = new JButton("Next Turn ▶");
         nextTurn.setToolTipText("Submit your orders (if any) and advance the turn (⌘N)");
         nextTurn.setEnabled(false);
@@ -269,7 +284,7 @@ public class ClientMain {
         frame.setVisible(true);
 
         NetClient client = new NetClient(
-            URI.create("ws://"+host+":"+port),
+            URI.create(serverUrl),
             name,
             msg -> SwingUtilities.invokeLater(() -> {
                 if (msg instanceof Messages.Joined) {
