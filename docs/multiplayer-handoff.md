@@ -516,12 +516,22 @@ empire 0 receives combat/spy alerts (multi-human per-empire routing needs recipi
 accessors on the ~10 alert classes + `description()` re-framing away from `player()`); GNN
 **ranking** bulletins are still not carried (need empire-list formatting).
 
-**Increment backlog (each: server prompt/notification + client handling + a `*Test`):**
-- **Multi-human alert routing + GNN ranking** — route combat/spy alerts to the affected
-  empire (not just empire 0) by adding recipient accessors to the alert classes and
-  re-framing `description()`; carry GNN ranking bulletins.
-- **Turn timer as a lobby pick** — expose `setTurnTimer` as a host lobby control (like
-  galaxy size / AI ability) instead of only a server arg.
+**DECISION (2026-08-09): resolve the remaining Phase-3 items and get the backend
+end-to-end tested BEFORE starting the browser client (Phase 5).** Rationale: a fully
+proven, per-empire-correct backend means any bug found while building the browser client
+is purely a client bug, not a backend one. So these are no longer "post-v1 polish" — they
+are a pre-Phase-5 gate:
+- **[1] Multi-human alert routing** — route combat/spy `GameAlert`s to the *affected*
+  empire, not just empire 0. Add a recipient-empire to each alert (set at `create()`),
+  re-frame `description()` to use the recipient's `sv` instead of `player()`, flip the
+  creation gates from `isPlayer()` to `!decidedByAI()`, and route each alert to its
+  recipient's client. Needs a 2-human end-to-end test.
+- **[2] GNN ranking bulletins** — carry `GNNRankingNotification` (message-type key + empire
+  list) as public NEWS; format it server-side.
+- **[3] Turn timer as a lobby pick** — expose `setTurnTimer` as a host lobby control (like
+  galaxy size / AI ability), not only a server arg.
+- **[4] Multi-human test coverage** — add 2-human end-to-end tests so per-empire routing
+  (views, notifications, prompts, alerts) is proven, not just the 1-human path.
 - **Async player-to-player diplomacy** — today a human→human offer already defers to the
   other human's prompt (increment 2); a fuller negotiation UX (counter-offers, tech
   trades) is future work.
