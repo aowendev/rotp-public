@@ -216,6 +216,16 @@ public class AIDiplomat implements Base, Diplomat {
             return null;
         }
 
+        // multiplayer: a remote human answers for themselves. Never a modal here —
+        // the headless server has no UI — so queue the request and let the server
+        // raise an INCOMING_TECH_REQUEST prompt. Returning null leaves the asking AI
+        // with no deal, so nothing is traded until the human replies.
+        if (empire.isRemoteHuman()) {
+            DiplomaticNotification.createTechRequest(diplomat.viewForEmpire(empire),
+                DialogueManager.OFFER_TECH_EXCHANGE, tech.id());
+            return null;
+        }
+
         EmpireView v = empire.viewForEmpire(diplomat);
         
         // modnar: add in readyForTech check, limits one tech trade per turn per empire

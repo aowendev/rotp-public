@@ -29,9 +29,20 @@ public class DiplomaticNotification implements TurnNotification, Base {
     private String type;
     private DiplomaticIncident incident;
     private boolean returnToMap = false;
+    private String techId;      // multiplayer tech requests only; null otherwise
+
+    public String techId()               { return techId; }
 
     public static DiplomaticNotification create(EmpireView v, String messageType) {
         DiplomaticNotification notif = new DiplomaticNotification(v, messageType);
+        GameSession.instance().addTurnNotification(notif);
+        return notif;
+    }
+    /** multiplayer: the technology an AI is asking a remote human for, so the
+     * server can raise a prompt the human answers instead of their AI answering */
+    public static DiplomaticNotification createTechRequest(EmpireView v, String messageType, String tech) {
+        DiplomaticNotification notif = new DiplomaticNotification(v, messageType);
+        notif.techId = tech;
         GameSession.instance().addTurnNotification(notif);
         return notif;
     }

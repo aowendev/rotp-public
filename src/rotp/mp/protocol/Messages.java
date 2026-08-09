@@ -77,6 +77,9 @@ public final class Messages {
     public static class Joined {
         public int empireId;
         public boolean host;      // this player may start the game
+        /** store this and send it back in {@link Hello#sessionToken} to re-claim
+         * this empire after a disconnect or refresh */
+        public String sessionToken;
     }
 
     /**
@@ -85,9 +88,6 @@ public final class Messages {
      * to add (-1 = use the ruleset default).
      */
     public static class StartGame {
-        /** store this and send it back in {@link Hello#sessionToken} to re-claim
-         * this empire after a disconnect or refresh */
-        public String sessionToken;
         public int aiOpponents = -1;
         /** chosen galaxy size (IGameOptions.SIZE_*); null keeps the server default */
         public String galaxySize;
@@ -380,6 +380,103 @@ public final class Messages {
         public int empireId;
     }
 
+    // ---- fuller diplomacy: tech exchange, aid, threats (Phase 4) ----
+    //
+    // MOO1's audience screen is more than accept/decline on a treaty. The three
+    // additions here mirror the desktop diplomacy menus exactly, so the same
+    // engine entry points answer them:
+    //   exchange technology  DiplomacyTechRequestMenu -> DiplomacyTechCounterMenu
+    //   offer aid            DiplomacyOfferAidMenu
+    //   threaten             DiplomacyThreatenMenu
+    // Tech exchange is a *two-step* negotiation — you ask for a tech, they name a
+    // price in techs of their own, you pick one or walk away — which is why it
+    // needs a counter-offer round trip rather than one command.
+
+    /** a technology as it appears in a trade menu (name, tier and cost, as the
+     * desktop menu shows them) */
+    public static class TechOption {
+        public String id;
+        public String name;
+        public int quintile;   // tech tier
+        public int cost;       // research cost, the rough "worth" of the trade
+    }
+
+    /** client -> server: what can I currently do with this empire diplomatically?
+     * Answered with a {@link TechTradeMenu}. */
+    public static class DiploOptions {
+        public int empireId;
+    }
+
+    /**
+     * server -> client: the diplomatic menu for one contacted empire — which
+     * actions the server would accept right now, and the technologies/amounts
+     * involved. Computed from that empire's own diplomat AI, so the client runs
+     * no game math and cannot see techs it has no business knowing about.
+     */
+    public static class TechTradeMenu {
+        public int empireId;
+        public boolean canExchangeTech;
+        public boolean canOfferAid;
+        public boolean canThreatenSpying;
+        public boolean canThreatenAttacking;
+        public boolean canEvictSpies;
+        public List<TechOption> canRequest = new ArrayList<>();  // their techs you may ask for
+        public List<TechOption> canGift = new ArrayList<>();     // your techs you may give
+        public List<Integer> aidAmounts = new ArrayList<>();     // BC gifts you can afford
+    }
+
+    /** client -> server: ask an empire for one of their technologies. They answer
+     * with a {@link TechCounterOffer} (their price) or a refusing diploReply. */
+    public static class RequestTech {
+        public int empireId;
+        public String techId;
+    }
+
+    /**
+     * server -> client: they will trade the tech you asked for, in exchange for
+     * one of `counterOptions` — your techs they want. Resolve with
+     * {@link CounterOfferTech}, or simply drop it to walk away.
+     */
+    public static class TechCounterOffer {
+        public int empireId;
+        public String requestedTechId;
+        public String requestedTechName;
+        public String text;                 // their words, from the engine
+        public List<TechOption> counterOptions = new ArrayList<>();
+    }
+
+    /** client -> server: close a tech exchange by paying the named price */
+    public static class CounterOfferTech {
+        public int empireId;
+        public String requestedTechId;   // what you are getting
+        public String offeredTechId;     // what you are giving, from counterOptions
+    }
+
+    /**
+     * client -> server: answer another *human's* tech request (an
+     * INCOMING_TECH_REQUEST prompt). counterTechId is the tech of theirs you want
+     * in exchange, from the prompt's choices; null/empty refuses the request.
+     */
+    public static class RespondTechRequest {
+        public int requestorId;
+        public String counterTechId;
+    }
+
+    /** client -> server: a gift, expecting nothing back. Exactly one of amount
+     * (BC from your reserve) or techId. */
+    public static class OfferAid {
+        public int empireId;
+        public int amount;
+        public String techId;
+    }
+
+    /** client -> server: a demand backed by nothing but menace.
+     * threat: EVICT_SPIES | STOP_SPYING | STOP_ATTACKING */
+    public static class Threaten {
+        public int empireId;
+        public String threat;
+    }
+
     /** server -> client: the target's answer to a diplomatic offer */
     public static class DiploReply {
         public int empireId;
@@ -427,7 +524,7 @@ public final class Messages {
     }
 
     public static class Prompt {
-        public String type;       // "SELECT_TECH" | "INCOMING_DIPLOMACY"
+        public String type;       // "SELECT_TECH" | "INCOMING_DIPLOMACY" | "INCOMING_TECH_REQUEST" | ...
         public int category;      // research category (0-5) for SELECT_TECH, else -1
         public String text;       // human-readable
         // SELECT_TECH: the techs available to research now, so the prompt is
@@ -440,6 +537,11 @@ public final class Messages {
         public String action;             // TRADE | PEACE | PACT | ALLIANCE
         // COLONIZE: the system a colony ship is orbiting and may settle.
         public int systemId = -1;
+        // INCOMING_TECH_REQUEST: another human wants this tech of yours. The
+        // choices are *their* techs you may demand in exchange (engine-priced);
+        // resolve with RespondTechRequest, or ignore to refuse.
+        public String techId;
+        public String techName;
     }
 
     /**

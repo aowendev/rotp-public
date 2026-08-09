@@ -19,6 +19,7 @@ import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -209,6 +210,13 @@ public class RacesPanel extends JPanel {
         report.setToolTipText("Intelligence report on this race");
         report.addActionListener(a -> showReport(e));
         reportRow.add(report);
+        // the rest of the MOO1 audience: technology exchange, gifts, threats. Each
+        // opens on the server's menu for this empire (diploOptions -> techTradeMenu),
+        // so the options offered are exactly the ones the server would accept.
+        JButton audience = new JButton("Audience...");
+        audience.setToolTipText("Exchange technology, offer aid, or threaten this race");
+        audience.addActionListener(a -> requestDiploOptions(e.id));
+        reportRow.add(audience);
         bottom.add(reportRow);
 
         card.add(bottom, BorderLayout.SOUTH);
@@ -304,6 +312,174 @@ public class RacesPanel extends JPanel {
         Messages.DeclareWar w = new Messages.DeclareWar();
         w.empireId = empireId;
         orderSender.accept(w);
+    }
+
+    // ---- audience: technology exchange, aid, threats (Phase 4) ----
+
+    private void requestDiploOptions(int empireId) {
+        Messages.DiploOptions m = new Messages.DiploOptions();
+        m.empireId = empireId;
+        orderSender.accept(m);
+    }
+
+    /**
+     * The server's answer to diploOptions: everything this player may currently do
+     * to that empire. Shown as a menu, mirroring the desktop audience screen.
+     */
+    public void showAudience(Messages.TechTradeMenu menu) {
+        if (menu == null)
+            return;
+        String who = empireName(menu.empireId);
+        List<String> choices = new ArrayList<>();
+        if (menu.canExchangeTech && !menu.canRequest.isEmpty())
+            choices.add("Exchange technology");
+        if (menu.canOfferAid && !menu.aidAmounts.isEmpty())
+            choices.add("Give money");
+        if (menu.canOfferAid && !menu.canGift.isEmpty())
+            choices.add("Give technology");
+        // the desktop audience wording (labels.txt DIPLOMACY_MENU_*)
+        if (menu.canEvictSpies)
+            choices.add("Remove All Spies (lowers relations)");
+        if (menu.canThreatenSpying)
+            choices.add("Stop Spying Activities");
+        if (menu.canThreatenAttacking)
+            choices.add("Stop Attacking");
+        if (choices.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                "There is nothing to discuss with " + who + " right now.",
+                "Audience - " + who, JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        String pick = (String) JOptionPane.showInputDialog(this,
+            "What do you wish to discuss with " + who + "?", "Audience - " + who,
+            JOptionPane.PLAIN_MESSAGE, null, choices.toArray(new String[0]), choices.get(0));
+        if (pick == null)
+            return;
+        switch (pick) {
+            case "Exchange technology": askForTech(menu, who); break;
+            case "Give money":          giveMoney(menu, who); break;
+            case "Give technology":     giveTech(menu, who); break;
+            case "Remove All Spies (lowers relations)": threaten(menu.empireId, "EVICT_SPIES"); break;
+            case "Stop Spying Activities":             threaten(menu.empireId, "STOP_SPYING"); break;
+            case "Stop Attacking":                     threaten(menu.empireId, "STOP_ATTACKING"); break;
+            default: break;
+        }
+    }
+
+    private void askForTech(Messages.TechTradeMenu menu, String who) {
+        Messages.TechOption t = pickTech(menu.canRequest,
+            "Which technology do you want from " + who + "?", "Request Technology");
+        if (t == null)
+            return;
+        Messages.RequestTech m = new Messages.RequestTech();
+        m.empireId = menu.empireId;
+        m.techId = t.id;
+        orderSender.accept(m);   // they answer with a techCounterOffer, or refuse
+    }
+
+    /**
+     * Their price for the tech you asked for: pick one of your technologies to give
+     * up, or walk away. This is the second half of the exchange — a tech trade is a
+     * negotiation, not a single order.
+     */
+    public void showCounterOffer(Messages.TechCounterOffer offer) {
+        if (offer == null)
+            return;
+        String who = empireName(offer.empireId);
+        if (offer.counterOptions.isEmpty()) {
+            replyLog.append(who + " will not trade " + offer.requestedTechName + "\n");
+            return;
+        }
+        String preamble = ((offer.text == null) || offer.text.isEmpty()) ? "" : offer.text + "\n\n";
+        Messages.TechOption give = pickTech(offer.counterOptions,
+            preamble + who + " will trade " + offer.requestedTechName
+            + " for one of these. Which do you give up?",
+            "Technology Exchange - " + who);
+        if (give == null) {
+            replyLog.append("You walked away from the exchange with " + who + "\n");
+            return;
+        }
+        Messages.CounterOfferTech m = new Messages.CounterOfferTech();
+        m.empireId = offer.empireId;
+        m.requestedTechId = offer.requestedTechId;
+        m.offeredTechId = give.id;
+        orderSender.accept(m);
+    }
+
+    /**
+     * Another human is asking you for a technology. Name one of theirs you want in
+     * exchange, or refuse. Ignoring it refuses by default when the turn resolves.
+     */
+    public void promptIncomingTechRequest(Messages.Prompt prompt) {
+        if (prompt == null)
+            return;
+        String who = empireName(prompt.empireId);
+        String[] names = (prompt.choiceNames == null) ? new String[0] : prompt.choiceNames;
+        if (names.length == 0)
+            return;
+        String pick = (String) JOptionPane.showInputDialog(this,
+            who + " asks you for " + prompt.techName
+            + ".\nWhich of their technologies do you want in exchange?",
+            "Technology Request - " + who,
+            JOptionPane.PLAIN_MESSAGE, null, names, names[0]);
+        Messages.RespondTechRequest m = new Messages.RespondTechRequest();
+        m.requestorId = prompt.empireId;
+        if (pick != null)
+            for (int i = 0; i < names.length; i++)
+                if (names[i].equals(pick))
+                    m.counterTechId = prompt.choiceIds[i];
+        orderSender.accept(m);   // a null counterTechId refuses
+        replyLog.append((m.counterTechId == null)
+            ? "You refused " + who + "'s request for " + prompt.techName + "\n"
+            : "You offered to trade " + prompt.techName + " to " + who + "\n");
+    }
+
+    private void giveMoney(Messages.TechTradeMenu menu, String who) {
+        String[] amounts = new String[menu.aidAmounts.size()];
+        for (int i = 0; i < amounts.length; i++)
+            amounts[i] = menu.aidAmounts.get(i) + " BC";
+        String pick = (String) JOptionPane.showInputDialog(this,
+            "How much do you give " + who + "?", "Offer Aid",
+            JOptionPane.PLAIN_MESSAGE, null, amounts, amounts[0]);
+        if (pick == null)
+            return;
+        Messages.OfferAid m = new Messages.OfferAid();
+        m.empireId = menu.empireId;
+        m.amount = menu.aidAmounts.get(java.util.Arrays.asList(amounts).indexOf(pick));
+        orderSender.accept(m);
+    }
+
+    private void giveTech(Messages.TechTradeMenu menu, String who) {
+        Messages.TechOption t = pickTech(menu.canGift,
+            "Which technology do you give " + who + "?", "Offer Technology");
+        if (t == null)
+            return;
+        Messages.OfferAid m = new Messages.OfferAid();
+        m.empireId = menu.empireId;
+        m.techId = t.id;
+        orderSender.accept(m);
+    }
+
+    private void threaten(int empireId, String threat) {
+        Messages.Threaten m = new Messages.Threaten();
+        m.empireId = empireId;
+        m.threat = threat;
+        orderSender.accept(m);
+    }
+
+    /** a chooser over technologies, labelled the way the desktop trade menus are
+     * (name, tier and research cost — the rough worth of the deal) */
+    private Messages.TechOption pickTech(List<Messages.TechOption> options, String message, String title) {
+        String[] labels = new String[options.size()];
+        for (int i = 0; i < labels.length; i++) {
+            Messages.TechOption o = options.get(i);
+            labels[i] = o.name + "  (tier " + o.quintile + ", " + o.cost + " RP)";
+        }
+        String pick = (String) JOptionPane.showInputDialog(this, message, title,
+            JOptionPane.PLAIN_MESSAGE, null, labels, labels[0]);
+        if (pick == null)
+            return null;
+        return options.get(java.util.Arrays.asList(labels).indexOf(pick));
     }
 
     private String empireName(int empireId) {

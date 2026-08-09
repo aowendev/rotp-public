@@ -36,6 +36,7 @@ import rotp.model.game.MOO1GameOptions;
 import rotp.util.LabelManager;
 import rotp.model.ships.ShipDesign;
 import rotp.model.ships.ShipDesignLab;
+import rotp.model.tech.Tech;
 import rotp.model.tech.TechCategory;
 import rotp.model.tech.TechTree;
 import rotp.mp.protocol.Messages;
@@ -80,6 +81,15 @@ public class GameServer extends WebSocketServer {
     /** interactive prompts raised during this turn's post-processing (incoming diplomacy,
      * council votes), keyed by the empire that must respond; broadcast as Prompts */
     private final Map<Integer, List<Messages.Prompt>> pendingPrompts = new HashMap<>();
+    /**
+     * Human-to-human tech requests awaiting an answer, keyed by the empire being
+     * asked. Deliberately NOT in {@link #pendingPrompts}: that queue is a
+     * post-turn broadcast that is cleared every turn, whereas a tech request is a
+     * mid-turn negotiation delivered the moment it is made. Holding the request
+     * server-side also means a `respondTechRequest` cannot fabricate a trade that
+     * was never offered. Unanswered requests lapse when the turn resolves.
+     */
+    private final Map<Integer, List<Messages.Prompt>> pendingTechRequests = new HashMap<>();
     /** public galactic news (GNN) from this turn, broadcast to every client as NEWS notifications */
     private final List<Messages.Notification> pendingPublicNews = new ArrayList<>();
     /** combat/spy GameAlerts from this turn, keyed by the recipient empire id (the human
@@ -106,8 +116,11 @@ public class GameServer extends WebSocketServer {
 
     private static class Player {
         String name;
+        /** issued on join; the stable identity a reconnecting client re-claims with */
+        String token = java.util.UUID.randomUUID().toString();
         int empireId = -1;
         boolean ready = false;
+        boolean host = false;   // may start the game from the lobby
         String raceId;   // race picked in the lobby (defaulted on join)
     }
 
@@ -116,13 +129,10 @@ public class GameServer extends WebSocketServer {
      * Kept as a constant so the lobby can offer races before any game options
      * object exists.
      */
-        /** issued on join; the stable identity a reconnecting client re-claims with */
-        String token = java.util.UUID.randomUUID().toString();
     private static final String[] STARTING_RACE_IDS = {
         "RACE_HUMAN", "RACE_ALKARI", "RACE_SILICOID", "RACE_MRRSHAN", "RACE_KLACKON",
         "RACE_MEKLAR", "RACE_PSILON", "RACE_DARLOK", "RACE_SAKKRA", "RACE_BULRATHI"
     };
-        boolean host = false;   // may start the game from the lobby
 
     public GameServer(int port, int humanSlots) {
         this(port, humanSlots, null, null);
@@ -148,6 +158,11 @@ public class GameServer extends WebSocketServer {
         this.galaxySize = galaxySize;
         this.loadFile = loadFile;
         setReuseAddr(true);
+        // Over the internet a browser tab can vanish without a close frame (sleep,
+        // a dropped mobile link, a killed tab). Ping every 30s and drop a silent
+        // connection, so the player lands in `departed` and their session token
+        // can re-claim the empire instead of a ghost holding it.
+        setConnectionLostTimeout(30);
         if (loadFile != null)
             resumeSavedGame();
     }
@@ -171,11 +186,6 @@ public class GameServer extends WebSocketServer {
     public void stop(int timeout) throws InterruptedException {
         timer.shutdownNow();   // release the turn-timer thread on shutdown
         super.stop(timeout);
-        // Over the internet a browser tab can vanish without a close frame (sleep,
-        // a dropped mobile link, a killed tab). Ping every 30s and drop a silent
-        // connection, so the player lands in `departed` and their session token
-        // can re-claim the empire instead of a ghost holding it.
-        setConnectionLostTimeout(30);
     }
 
     @Override
@@ -269,6 +279,10 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "setSpyFrame", (Messages.SetSpyFrame) msg);
         else if (msg instanceof Messages.SetSecurity)
             handleCommand(conn, "setSecurity", (Messages.SetSecurity) msg);
+        else if (msg instanceof Messages.TransferReserve)
+            handleCommand(conn, "transferReserve", (Messages.TransferReserve) msg);
+        else if (msg instanceof Messages.SetEmpireTax)
+            handleCommand(conn, "setEmpireTax", (Messages.SetEmpireTax) msg);
         else if (msg instanceof Messages.SaveGame)
             handleSaveGame(conn, (Messages.SaveGame) msg);
         else if (msg instanceof Messages.DiploOffer)
@@ -279,6 +293,18 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "declareWar", (Messages.DeclareWar) msg);
         else if (msg instanceof Messages.RespondDiplomacy)
             handleCommand(conn, "respondDiplomacy", (Messages.RespondDiplomacy) msg);
+        else if (msg instanceof Messages.DiploOptions)
+            handleDiploOptions(conn, (Messages.DiploOptions) msg);
+        else if (msg instanceof Messages.RequestTech)
+            handleCommand(conn, "requestTech", (Messages.RequestTech) msg);
+        else if (msg instanceof Messages.CounterOfferTech)
+            handleCommand(conn, "counterOfferTech", (Messages.CounterOfferTech) msg);
+        else if (msg instanceof Messages.RespondTechRequest)
+            handleCommand(conn, "respondTechRequest", (Messages.RespondTechRequest) msg);
+        else if (msg instanceof Messages.OfferAid)
+            handleCommand(conn, "offerAid", (Messages.OfferAid) msg);
+        else if (msg instanceof Messages.Threaten)
+            handleCommand(conn, "threaten", (Messages.Threaten) msg);
         else if (msg instanceof Messages.CastCouncilVote)
             handleCommand(conn, "castCouncilVote", (Messages.CastCouncilVote) msg);
         else if (msg instanceof Messages.DesignCatalog)
@@ -297,10 +323,6 @@ public class GameServer extends WebSocketServer {
             send(conn, result("saveGame", false, "Game not started"));
             return;
         }
-        else if (msg instanceof Messages.TransferReserve)
-            handleCommand(conn, "transferReserve", (Messages.TransferReserve) msg);
-        else if (msg instanceof Messages.SetEmpireTax)
-            handleCommand(conn, "setEmpireTax", (Messages.SetEmpireTax) msg);
         if (turnRunning) {
             send(conn, result("saveGame", false, "Turn is resolving; try again in a moment"));
             return;
@@ -335,6 +357,20 @@ public class GameServer extends WebSocketServer {
         }
         String name = (hello.playerName == null || hello.playerName.isEmpty()) ? "Player" : hello.playerName;
 
+        // A session token re-claims the same empire regardless of display name,
+        // and works before the game starts as well as after — the browser cases
+        // (refresh, sleep/wake, a dropped socket the server has not noticed yet)
+        // all look like a brand-new connection carrying an old token.
+        Player claimed = claimByToken(hello.sessionToken);
+        if (claimed != null) {
+            claimed.name = name;      // a client may come back under a new name
+            if (gameStarted)
+                reconnect(conn, claimed);
+            else
+                rejoinLobby(conn, claimed);
+            return;
+        }
+
         // a client that dropped mid-game rejoins its own empire (matched by name)
         // instead of being turned away as "game full"
         if (gameStarted) {
@@ -348,6 +384,7 @@ public class GameServer extends WebSocketServer {
                 Player p = new Player();
                 p.name = name;
                 p.empireId = unclaimedLoadSlots.poll();
+                p.host = (p.empireId == 0);
                 System.out.println("[server] "+name+" joined loaded game as empire "+p.empireId);
                 reconnect(conn, p);
                 return;
@@ -366,6 +403,8 @@ public class GameServer extends WebSocketServer {
         players.put(conn, p);
         if (hostConn == null) {
             hostConn = conn;   // the first player to join is the host
+            p.host = true;
+        }
         System.out.println("[server] "+p.name+" joined as empire "+p.empireId
             + (p.host ? " (host)" : "") + ", race "+p.raceId);
 
@@ -380,89 +419,10 @@ public class GameServer extends WebSocketServer {
         broadcastLobby(p.name+" joined");
 
         // auto-start once every human slot is filled (ruleset default AI count)
-        // A session token re-claims the same empire regardless of display name,
-        // and works before the game starts as well as after — the browser cases
-        // (refresh, sleep/wake, a dropped socket the server has not noticed yet)
-        // all look like a brand-new connection carrying an old token.
-        Player claimed = claimByToken(hello.sessionToken);
-        if (claimed != null) {
-            claimed.name = name;      // a client may come back under a new name
-            if (gameStarted)
-                reconnect(conn, claimed);
-            else
-                rejoinLobby(conn, claimed);
-            return;
-        }
-
         if (players.size() == humanSlots)
             beginStart(-1);
     }
 
-    /**
-     * Re-attach a returning client to the empire it left and replay enough state
-     * to resume play: game-started (so the client leaves the lobby and knows its
-     * empire) plus a fresh view. The ship-design catalog is re-requested by the
-     * client on its first view, so it need not be pushed here. Runs under the
-     * handleHello monitor.
-     */
-    private void reconnect(WebSocket conn, Player p) {
-        p.ready = false;              // a fresh turn; don't carry a stale ready flag
-        players.put(conn, p);
-        if (p.host || (p.empireId == 0))
-            hostConn = conn;          // keep the host pointer on a live connection
-        System.out.println("[server] "+p.name+" reconnected as empire "+p.empireId);
-
-        Messages.GameStarted gs = new Messages.GameStarted();
-        gs.empireId = p.empireId;
-        send(conn, Protocol.encode(gs));
-
-        Empire emp = galaxy().empire(p.empireId);
-        if (emp != null) {
-            synchronized (gameLock) {
-                send(conn, Protocol.encode(PlayerViews.build(emp)));
-            }
-                p.host = (p.empireId == 0);
-        }
-        // refresh everyone's ready counts now that the player is back
-        broadcastTurnStatus(p.name+" reconnected");
-    }
-
-    /** host asks to start now with the humans present, filling the rest with AI */
-    private synchronized void handleStartGame(WebSocket conn, Messages.StartGame msg) {
-        if (gameStarted || starting) {
-            send(conn, error("Game already starting"));
-            return;
-        }
-        if (conn != hostConn) {
-            send(conn, error("Only the host can start the game"));
-            return;
-        }
-        if (players.isEmpty()) {
-            send(conn, error("No players present"));
-            return;
-        }
-            p.host = true;
-        }
-        // the host may override the galaxy size chosen at launch
-        if ((msg.galaxySize != null) && !msg.galaxySize.isEmpty()) {
-            if (!new MOO1GameOptions().galaxySizeOptions().contains(msg.galaxySize)) {
-                send(conn, error("Unknown galaxy size: "+msg.galaxySize));
-                return;
-            }
-            galaxySize = msg.galaxySize;
-            System.out.println("[server] host set galaxy size "+galaxySize);
-        }
-        // the host may set the difficulty (= AI ability)
-        if ((msg.difficulty != null) && !msg.difficulty.isEmpty()) {
-            if (!new MOO1GameOptions().gameDifficultyOptions().contains(msg.difficulty)) {
-                send(conn, error("Unknown difficulty: "+msg.difficulty));
-                return;
-            }
-            gameDifficulty = msg.difficulty;
-            System.out.println("[server] host set difficulty (AI ability) "+gameDifficulty);
-        }
-        // the host may set (or disable) the turn timer for the game
-        if (msg.turnTimerSeconds >= 0) {
     /**
      * Find the player this session token belongs to and detach it from whatever
      * connection (if any) still holds it, so the caller can re-attach it to the
@@ -520,6 +480,77 @@ public class GameServer extends WebSocketServer {
         broadcastLobby(p.name+" rejoined");
     }
 
+    /**
+     * Re-attach a returning client to the empire it left and replay enough state
+     * to resume play: game-started (so the client leaves the lobby and knows its
+     * empire) plus a fresh view. The ship-design catalog is re-requested by the
+     * client on its first view, so it need not be pushed here. Runs under the
+     * handleHello monitor.
+     */
+    private void reconnect(WebSocket conn, Player p) {
+        p.ready = false;              // a fresh turn; don't carry a stale ready flag
+        players.put(conn, p);
+        if (p.host || (p.empireId == 0))
+            hostConn = conn;          // keep the host pointer on a live connection
+        System.out.println("[server] "+p.name+" reconnected as empire "+p.empireId);
+
+        // (re)issue the session token first — a client joining a resumed save has
+        // never seen one, and GameStarted right after takes the client out of the
+        // lobby, so the Joined here only carries identity
+        Messages.Joined joined = new Messages.Joined();
+        joined.empireId = p.empireId;
+        joined.host = p.host;
+        joined.sessionToken = p.token;
+        send(conn, Protocol.encode(joined));
+
+        Messages.GameStarted gs = new Messages.GameStarted();
+        gs.empireId = p.empireId;
+        send(conn, Protocol.encode(gs));
+
+        Empire emp = galaxy().empire(p.empireId);
+        if (emp != null) {
+            synchronized (gameLock) {
+                send(conn, Protocol.encode(PlayerViews.build(emp)));
+            }
+        }
+        // refresh everyone's ready counts now that the player is back
+        broadcastTurnStatus(p.name+" reconnected");
+    }
+
+    /** host asks to start now with the humans present, filling the rest with AI */
+    private synchronized void handleStartGame(WebSocket conn, Messages.StartGame msg) {
+        if (gameStarted || starting) {
+            send(conn, error("Game already starting"));
+            return;
+        }
+        if (conn != hostConn) {
+            send(conn, error("Only the host can start the game"));
+            return;
+        }
+        if (players.isEmpty()) {
+            send(conn, error("No players present"));
+            return;
+        }
+        // the host may override the galaxy size chosen at launch
+        if ((msg.galaxySize != null) && !msg.galaxySize.isEmpty()) {
+            if (!new MOO1GameOptions().galaxySizeOptions().contains(msg.galaxySize)) {
+                send(conn, error("Unknown galaxy size: "+msg.galaxySize));
+                return;
+            }
+            galaxySize = msg.galaxySize;
+            System.out.println("[server] host set galaxy size "+galaxySize);
+        }
+        // the host may set the difficulty (= AI ability)
+        if ((msg.difficulty != null) && !msg.difficulty.isEmpty()) {
+            if (!new MOO1GameOptions().gameDifficultyOptions().contains(msg.difficulty)) {
+                send(conn, error("Unknown difficulty: "+msg.difficulty));
+                return;
+            }
+            gameDifficulty = msg.difficulty;
+            System.out.println("[server] host set difficulty (AI ability) "+gameDifficulty);
+        }
+        // the host may set (or disable) the turn timer for the game
+        if (msg.turnTimerSeconds >= 0) {
             setTurnTimer(msg.turnTimerSeconds);
             System.out.println("[server] host set turn timer "
                 + (msg.turnTimerSeconds > 0 ? msg.turnTimerSeconds + "s" : "off"));
@@ -591,15 +622,6 @@ public class GameServer extends WebSocketServer {
             opts.sizes.add(info);
         }
         opts.selectedId = (galaxySize != null) ? galaxySize : new MOO1GameOptions().selectedGalaxySize();
-        // (re)issue the session token first — a client joining a resumed save has
-        // never seen one, and GameStarted right after takes the client out of the
-        // lobby, so the Joined here only carries identity
-        Messages.Joined joined = new Messages.Joined();
-        joined.empireId = p.empireId;
-        joined.host = p.host;
-        joined.sessionToken = p.token;
-        send(conn, Protocol.encode(joined));
-
         return opts;
     }
 
@@ -868,6 +890,9 @@ public class GameServer extends WebSocketServer {
                     p.ready = false;
             }
             lowerMaxedColonyEcoToClean();
+            // an unanswered human-to-human tech request lapses with the turn it
+            // was made in, rather than hanging over the next one
+            pendingTechRequests.clear();
             collectPostTurnPrompts();     // clears pendingPrompts, adds diplomacy offers + colonize choices
             driveCouncil();               // adds any council-vote prompt for a human voter
             broadcastNotifications();
@@ -944,6 +969,10 @@ public class GameServer extends WebSocketServer {
                 err = applySetSpyFrame(emp, (Messages.SetSpyFrame) cmd);
             else if (cmd instanceof Messages.SetSecurity)
                 err = applySetSecurity(emp, (Messages.SetSecurity) cmd);
+            else if (cmd instanceof Messages.TransferReserve)
+                err = applyTransferReserve(emp, (Messages.TransferReserve) cmd);
+            else if (cmd instanceof Messages.SetEmpireTax)
+                err = applySetEmpireTax(emp, (Messages.SetEmpireTax) cmd);
             else if (cmd instanceof Messages.DiploOffer)
                 err = applyDiploOffer(conn, emp, (Messages.DiploOffer) cmd);
             else if (cmd instanceof Messages.BreakTreaty)
@@ -952,6 +981,16 @@ public class GameServer extends WebSocketServer {
                 err = applyDeclareWar(emp, (Messages.DeclareWar) cmd);
             else if (cmd instanceof Messages.RespondDiplomacy)
                 err = applyRespondDiplomacy(emp, (Messages.RespondDiplomacy) cmd);
+            else if (cmd instanceof Messages.RequestTech)
+                err = applyRequestTech(conn, emp, (Messages.RequestTech) cmd);
+            else if (cmd instanceof Messages.CounterOfferTech)
+                err = applyCounterOfferTech(conn, emp, (Messages.CounterOfferTech) cmd);
+            else if (cmd instanceof Messages.RespondTechRequest)
+                err = applyRespondTechRequest(emp, (Messages.RespondTechRequest) cmd);
+            else if (cmd instanceof Messages.OfferAid)
+                err = applyOfferAid(conn, emp, (Messages.OfferAid) cmd);
+            else if (cmd instanceof Messages.Threaten)
+                err = applyThreaten(conn, emp, (Messages.Threaten) cmd);
             else
                 err = applyCastCouncilVote(emp, (Messages.CastCouncilVote) cmd);
         }
@@ -1075,10 +1114,6 @@ public class GameServer extends WebSocketServer {
         int sum = 0;
         for (int a : alloc) {
             if (a < 0)
-            else if (cmd instanceof Messages.TransferReserve)
-                err = applyTransferReserve(emp, (Messages.TransferReserve) cmd);
-            else if (cmd instanceof Messages.SetEmpireTax)
-                err = applySetEmpireTax(emp, (Messages.SetEmpireTax) cmd);
                 return;
             sum += a;
         }
@@ -1435,6 +1470,35 @@ public class GameServer extends WebSocketServer {
         return null;
     }
 
+    /** reserve -> colony. Lossless; the colony spends what it can next turn and
+     * keeps the surplus banked (Colony.maxReserveIncome caps a turn's spend at
+     * the colony's own production). */
+    private String applyTransferReserve(Empire emp, Messages.TransferReserve cmd) {
+        StarSystem sys = galaxy().system(cmd.systemId);
+        if (sys == null)
+            return "No such system";
+        if ((sys.empire() != emp) || !sys.isColonized())
+            return "Not your colony";
+        if (cmd.amount <= 0)
+            return "Amount must be positive";
+        if (cmd.amount > emp.totalReserve())
+            return "Only "+Math.round(emp.totalReserve())+" BC in reserve";
+        emp.allocateReserve(sys.colony(), cmd.amount);
+        return null;
+    }
+
+    /** colony output -> reserve. ROTP banks into the reserve only through the
+     * empire-wide tax rate (see Messages.SetEmpireTax), so this is the "add to
+     * reserve" order. */
+    private String applySetEmpireTax(Empire emp, Messages.SetEmpireTax cmd) {
+        if ((cmd.level < 0) || (cmd.level > emp.maxEmpireTaxLevel()))
+            return "Tax rate must be 0-"+emp.maxEmpireTaxLevel()+"%";
+        if (cmd.onlyDeveloped != emp.empireTaxOnlyDeveloped())
+            emp.toggleEmpireTaxOnlyDeveloped();
+        emp.empireTaxLevel(cmd.level);
+        return null;
+    }
+
     private String applyDiploOffer(WebSocket conn, Empire emp, Messages.DiploOffer cmd) {
         EmpireView ev = contactedView(emp, cmd.empireId);
         if (ev == null)
@@ -1479,6 +1543,298 @@ public class GameServer extends WebSocketServer {
         dr.text = (reply == null) ? "" : reply.text();
         send(conn, Protocol.encode(dr));
         return null;
+    }
+
+    // ---- fuller diplomacy: tech exchange, aid, threats (Phase 4) ----
+    //
+    // These mirror the desktop audience menus onto the wire. The engine entry
+    // points are the same ones DiplomacyTechRequestMenu / DiplomacyOfferAidMenu /
+    // DiplomacyThreatenMenu call, so an AI answers a remote human exactly as it
+    // answers the local player.
+
+    /** the diplomatic menu for one contacted empire: what this player may do to
+     * them right now, and at what price. All of it comes from the diplomat AIs, so
+     * the client never computes trade values or sees techs it shouldn't. */
+    private void handleDiploOptions(WebSocket conn, Messages.DiploOptions msg) {
+        Player p;
+        synchronized (this) {
+            p = players.get(conn);
+        }
+        if (p == null || !gameStarted) {
+            send(conn, error("Game not started"));
+            return;
+        }
+        Messages.TechTradeMenu menu = new Messages.TechTradeMenu();
+        menu.empireId = msg.empireId;
+        synchronized (gameLock) {
+            Empire emp = galaxy().empire(p.empireId);
+            EmpireView ev = (emp == null) ? null : contactedView(emp, msg.empireId);
+            if (ev == null) {
+                send(conn, error("No contact with that empire"));
+                return;
+            }
+            Empire other = galaxy().empire(msg.empireId);
+            menu.canExchangeTech = emp.diplomatAI().canExchangeTechnology(other);
+            menu.canOfferAid = emp.diplomatAI().canOfferAid(other);
+            menu.canThreatenSpying = emp.diplomatAI().canThreatenSpying(other);
+            menu.canThreatenAttacking = emp.diplomatAI().canThreatenAttacking(other);
+            menu.canEvictSpies = emp.diplomatAI().canEvictSpies(other);
+            for (Tech t : emp.diplomatAI().techsAvailableForRequest(other))
+                menu.canRequest.add(techOption(t));
+            for (Tech t : emp.diplomatAI().offerableTechnologies(other))
+                menu.canGift.add(techOption(t));
+            menu.aidAmounts.addAll(emp.diplomatAI().offerAidAmounts());
+        }
+        send(conn, Protocol.encode(menu));
+    }
+
+    private static Messages.TechOption techOption(Tech t) {
+        Messages.TechOption o = new Messages.TechOption();
+        o.id = t.id();
+        o.name = t.name();
+        o.quintile = t.quintile;
+        o.cost = (int) t.researchCost();
+        return o;
+    }
+
+    /**
+     * Ask another empire for one of their technologies. Against an AI this runs the
+     * engine's negotiation immediately: they either refuse, or name a price — a
+     * `techCounterOffer` listing techs of yours they'd take, which the player closes
+     * with counterOfferTech. Against another *human* the request is deferred into an
+     * INCOMING_TECH_REQUEST prompt for them to answer, exactly as an incoming treaty
+     * offer is (Phase 3 increment 2) — otherwise their AI would answer for them.
+     */
+    private String applyRequestTech(WebSocket conn, Empire emp, Messages.RequestTech cmd) {
+        EmpireView ev = contactedView(emp, cmd.empireId);
+        if (ev == null)
+            return "No contact with that empire";
+        Empire target = galaxy().empire(cmd.empireId);
+        if (!emp.diplomatAI().canExchangeTechnology(target))
+            return "Cannot exchange technology with that empire now";
+        Tech wanted = techFrom(cmd.techId);
+        if (wanted == null)
+            return "No such technology";
+        if (!containsTech(emp.diplomatAI().techsAvailableForRequest(target), wanted))
+            return "That technology is not available to request";
+
+        if (!target.decidedByAI()) {
+            // another human: they decide, and they name their own price
+            List<Tech> counters = target.diplomatAI().techsRequestedForCounter(emp, wanted);
+            if (counters.isEmpty())
+                return "They have nothing they would accept in exchange";
+            Messages.Prompt p = techRequestPrompt(emp, wanted, counters);
+            pendingTechRequests.computeIfAbsent(target.id, k -> new ArrayList<>()).add(p);
+            sendPromptNow(target.id, p);
+            return null;
+        }
+
+        DiplomaticReply reply = target.diplomatAI().receiveRequestTech(emp, wanted);
+        if ((reply == null) || !reply.accepted()) {
+            Messages.DiploReply dr = new Messages.DiploReply();
+            dr.empireId = cmd.empireId;
+            dr.action = "REQUEST_TECH";
+            dr.accepted = false;
+            dr.text = (reply == null) ? "" : reply.text();
+            send(conn, Protocol.encode(dr));
+            return null;
+        }
+        // accepted means "we will deal" — now they name their price
+        Messages.TechCounterOffer offer = new Messages.TechCounterOffer();
+        offer.empireId = cmd.empireId;
+        offer.requestedTechId = wanted.id();
+        offer.requestedTechName = wanted.name();
+        offer.text = reply.text();
+        for (Tech t : target.diplomatAI().techsRequestedForCounter(emp, wanted))
+            offer.counterOptions.add(techOption(t));
+        send(conn, Protocol.encode(offer));
+        return null;
+    }
+
+    /** close a tech exchange by paying the price they named */
+    private String applyCounterOfferTech(WebSocket conn, Empire emp, Messages.CounterOfferTech cmd) {
+        EmpireView ev = contactedView(emp, cmd.empireId);
+        if (ev == null)
+            return "No contact with that empire";
+        Empire target = galaxy().empire(cmd.empireId);
+        Tech wanted = techFrom(cmd.requestedTechId);
+        Tech offered = techFrom(cmd.offeredTechId);
+        if ((wanted == null) || (offered == null))
+            return "No such technology";
+        // re-derive the price rather than trusting the client's copy of it
+        if (!containsTech(target.diplomatAI().techsRequestedForCounter(emp, wanted), offered))
+            return "They will not accept that technology in exchange";
+
+        DiplomaticReply reply = target.diplomatAI().receiveCounterOfferTech(emp, offered, wanted);
+        Messages.DiploReply dr = new Messages.DiploReply();
+        dr.empireId = cmd.empireId;
+        dr.action = "EXCHANGE_TECH";
+        dr.accepted = (reply == null) || reply.accepted();
+        dr.text = (reply == null) ? "" : reply.text();
+        send(conn, Protocol.encode(dr));
+        return null;
+    }
+
+    /**
+     * Answer another human's tech request. An empty counterTechId refuses; otherwise
+     * the swap is made directly through the embassy (the same call the AI path ends
+     * in), because both sides here are humans and neither diplomat AI should decide.
+     */
+    private String applyRespondTechRequest(Empire emp, Messages.RespondTechRequest cmd) {
+        EmpireView ev = contactedView(emp, cmd.requestorId);
+        if (ev == null)
+            return "No contact with that empire";
+        Empire requestor = galaxy().empire(cmd.requestorId);
+        Messages.Prompt pending = takePendingTechRequest(emp.id, cmd.requestorId);
+        if (pending == null)
+            return "No pending technology request from that empire";
+        if ((cmd.counterTechId == null) || cmd.counterTechId.isEmpty())
+            return null;    // refused; the prompt is consumed either way
+
+        Tech wanted = techFrom(pending.techId);
+        Tech offered = techFrom(cmd.counterTechId);
+        if ((wanted == null) || (offered == null))
+            return "No such technology";
+        if (!containsTech(emp.diplomatAI().techsRequestedForCounter(requestor, wanted), offered))
+            return "That technology is not one you can demand in exchange";
+        // view owner = us (giving `wanted`, learning `offered`), view empire = requestor
+        ev.embassy().exchangeTechnology(offered, wanted);
+        return null;
+    }
+
+    /** a gift with nothing asked in return: BC from the reserve, or a technology */
+    private String applyOfferAid(WebSocket conn, Empire emp, Messages.OfferAid cmd) {
+        EmpireView ev = contactedView(emp, cmd.empireId);
+        if (ev == null)
+            return "No contact with that empire";
+        Empire target = galaxy().empire(cmd.empireId);
+        if (!emp.diplomatAI().canOfferAid(target))
+            return "Cannot offer aid to that empire now";
+        boolean money = (cmd.amount > 0);
+        boolean tech = (cmd.techId != null) && !cmd.techId.isEmpty();
+        if (money == tech)
+            return "Offer either an amount or a technology, not both";
+
+        DiplomaticReply reply;
+        if (money) {
+            if (!emp.diplomatAI().offerAidAmounts().contains(cmd.amount))
+                return "That is not an amount you can offer";
+            reply = target.diplomatAI().receiveFinancialAid(emp, cmd.amount);
+        }
+        else {
+            Tech gift = techFrom(cmd.techId);
+            if (gift == null)
+                return "No such technology";
+            if (!containsTech(emp.diplomatAI().offerableTechnologies(target), gift))
+                return "That technology is not yours to give away";
+            reply = target.diplomatAI().receiveTechnologyAid(emp, gift.id());
+        }
+        Messages.DiploReply dr = new Messages.DiploReply();
+        dr.empireId = cmd.empireId;
+        dr.action = "AID";
+        dr.accepted = (reply == null) || reply.accepted();
+        dr.text = (reply == null) ? "" : reply.text();
+        send(conn, Protocol.encode(dr));
+        return null;
+    }
+
+    /** a demand backed by nothing but menace; the target's leader decides how it lands */
+    private String applyThreaten(WebSocket conn, Empire emp, Messages.Threaten cmd) {
+        EmpireView ev = contactedView(emp, cmd.empireId);
+        if (ev == null)
+            return "No contact with that empire";
+        Empire target = galaxy().empire(cmd.empireId);
+        String threat = (cmd.threat == null) ? "" : cmd.threat.toUpperCase();
+        DiplomaticReply reply;
+        switch (threat) {
+            case "EVICT_SPIES":
+                if (!emp.diplomatAI().canEvictSpies(target))
+                    return "You cannot demand they remove their spies now";
+                reply = target.diplomatAI().receiveThreatEvictSpies(emp);
+                break;
+            case "STOP_SPYING":
+                if (!emp.diplomatAI().canThreatenSpying(target))
+                    return "They are not spying on you";
+                reply = target.diplomatAI().receiveThreatStopSpying(emp);
+                break;
+            case "STOP_ATTACKING":
+                if (!emp.diplomatAI().canThreatenAttacking(target))
+                    return "They are not attacking you";
+                reply = target.diplomatAI().receiveThreatStopAttacking(emp);
+                break;
+            default:
+                return "Threat must be EVICT_SPIES, STOP_SPYING, or STOP_ATTACKING";
+        }
+        Messages.DiploReply dr = new Messages.DiploReply();
+        dr.empireId = cmd.empireId;
+        dr.action = "THREAT";
+        dr.accepted = (reply != null) && reply.accepted();
+        dr.text = (reply == null) ? "" : reply.text();
+        send(conn, Protocol.encode(dr));
+        return null;
+    }
+
+    /** deliver one prompt to an empire's client immediately, without waiting for the
+     * end-of-turn prompt broadcast (a tech request is a mid-turn negotiation) */
+    private void sendPromptNow(int empireId, Messages.Prompt prompt) {
+        Messages.Prompts ps = new Messages.Prompts();
+        ps.turn = galaxy().currentTurn();
+        ps.items.add(prompt);
+        String encoded = Protocol.encode(ps);
+        synchronized (this) {
+            for (Map.Entry<WebSocket, Player> e : players.entrySet())
+                if (e.getValue().empireId == empireId)
+                    send(e.getKey(), encoded);
+        }
+    }
+
+    private Messages.Prompt techRequestPrompt(Empire requestor, Tech wanted, List<Tech> counters) {
+        Messages.Prompt p = new Messages.Prompt();
+        p.type = "INCOMING_TECH_REQUEST";
+        p.category = -1;
+        p.empireId = requestor.id;
+        p.techId = wanted.id();
+        p.techName = wanted.name();
+        p.text = requestor.name()+" asks you for "+wanted.name()
+               + ". Name a technology of theirs you want in exchange, or refuse.";
+        String[] ids = new String[counters.size()];
+        String[] names = new String[counters.size()];
+        for (int i = 0; i < counters.size(); i++) {
+            ids[i] = counters.get(i).id();
+            names[i] = counters.get(i).name();
+        }
+        p.choiceIds = ids;
+        p.choiceNames = names;
+        return p;
+    }
+
+    /** take the queued tech request from `requestorId` to `empireId`, or null if
+     * there is none (so a stray response can't fabricate a trade) */
+    private Messages.Prompt takePendingTechRequest(int empireId, int requestorId) {
+        List<Messages.Prompt> queued = pendingTechRequests.get(empireId);
+        if (queued == null)
+            return null;
+        for (java.util.Iterator<Messages.Prompt> it = queued.iterator(); it.hasNext(); ) {
+            Messages.Prompt p = it.next();
+            if ("INCOMING_TECH_REQUEST".equals(p.type) && (p.empireId == requestorId)) {
+                it.remove();
+                return p;
+            }
+        }
+        return null;
+    }
+
+    private static Tech techFrom(String techId) {
+        if ((techId == null) || techId.isEmpty())
+            return null;
+        return rotp.model.tech.TechLibrary.current().tech(techId);
+    }
+
+    private static boolean containsTech(List<Tech> techs, Tech t) {
+        for (Tech candidate : techs)
+            if (candidate.id().equals(t.id()))
+                return true;
+        return false;
     }
 
     /**
@@ -1580,35 +1936,6 @@ public class GameServer extends WebSocketServer {
             return "No contact with that empire";
         if (ev.embassy().anyWar())
             return "Already at war";
-    /** reserve -> colony. Lossless; the colony spends what it can next turn and
-     * keeps the surplus banked (Colony.maxReserveIncome caps a turn's spend at
-     * the colony's own production). */
-    private String applyTransferReserve(Empire emp, Messages.TransferReserve cmd) {
-        StarSystem sys = galaxy().system(cmd.systemId);
-        if (sys == null)
-            return "No such system";
-        if ((sys.empire() != emp) || !sys.isColonized())
-            return "Not your colony";
-        if (cmd.amount <= 0)
-            return "Amount must be positive";
-        if (cmd.amount > emp.totalReserve())
-            return "Only "+Math.round(emp.totalReserve())+" BC in reserve";
-        emp.allocateReserve(sys.colony(), cmd.amount);
-        return null;
-    }
-
-    /** colony output -> reserve. ROTP banks into the reserve only through the
-     * empire-wide tax rate (see Messages.SetEmpireTax), so this is the "add to
-     * reserve" order. */
-    private String applySetEmpireTax(Empire emp, Messages.SetEmpireTax cmd) {
-        if ((cmd.level < 0) || (cmd.level > emp.maxEmpireTaxLevel()))
-            return "Tax rate must be 0-"+emp.maxEmpireTaxLevel()+"%";
-        if (cmd.onlyDeveloped != emp.empireTaxOnlyDeveloped())
-            emp.toggleEmpireTaxOnlyDeveloped();
-        emp.empireTaxLevel(cmd.level);
-        return null;
-    }
-
         if (ev.embassy().alliance() || ev.embassy().unity())
             return "Break the alliance before declaring war";
         galaxy().empire(cmd.empireId).diplomatAI().receiveDeclareWar(emp);
@@ -1797,6 +2124,10 @@ public class GameServer extends WebSocketServer {
     }
 
     private void collectDiplomacyPrompt(DiplomaticNotification dn) {
+        if (dn.techId() != null) {
+            collectTechRequestPrompt(dn);
+            return;
+        }
         String action = diploActionFor(dn.type());
         if ((action == null) || (dn.view() == null))
             return;
@@ -1809,6 +2140,29 @@ public class GameServer extends WebSocketServer {
         p.action = action;
         p.empireId = requestor.id;
         p.text = requestor.name() + " proposes " + diploLabel(action);
+        pendingPrompts.computeIfAbsent(target.id, k -> new ArrayList<>()).add(p);
+    }
+
+    /**
+     * An AI asked a remote human for one of their technologies. The AI deferred it
+     * (see the isRemoteHuman branch in AIDiplomat.receiveRequestTech) rather than
+     * letting the human's own AI trade it away, so raise the same
+     * INCOMING_TECH_REQUEST prompt a human-to-human request raises. The human's
+     * `respondTechRequest` then completes or refuses it.
+     */
+    private void collectTechRequestPrompt(DiplomaticNotification dn) {
+        if (dn.view() == null)
+            return;
+        Empire target = dn.view().empire();   // requestor.viewForEmpire(target)
+        Empire requestor = dn.talker();
+        Tech wanted = techFrom(dn.techId());
+        if ((target == null) || (requestor == null) || (wanted == null))
+            return;
+        List<Tech> counters = target.diplomatAI().techsRequestedForCounter(requestor, wanted);
+        if (counters.isEmpty())
+            return;   // nothing the human could ask for in return; the deal is dead
+        Messages.Prompt p = techRequestPrompt(requestor, wanted, counters);
+        pendingTechRequests.computeIfAbsent(target.id, k -> new ArrayList<>()).add(p);
         pendingPrompts.computeIfAbsent(target.id, k -> new ArrayList<>()).add(p);
     }
 

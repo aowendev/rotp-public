@@ -78,6 +78,14 @@ public final class Protocol {
         register("declareWar",     Messages.DeclareWar.class);
         register("diploReply",     Messages.DiploReply.class);
         register("respondDiplomacy", Messages.RespondDiplomacy.class);
+        register("diploOptions",   Messages.DiploOptions.class);
+        register("techTradeMenu",  Messages.TechTradeMenu.class);
+        register("requestTech",    Messages.RequestTech.class);
+        register("techCounterOffer", Messages.TechCounterOffer.class);
+        register("counterOfferTech", Messages.CounterOfferTech.class);
+        register("respondTechRequest", Messages.RespondTechRequest.class);
+        register("offerAid",       Messages.OfferAid.class);
+        register("threaten",       Messages.Threaten.class);
         register("castCouncilVote", Messages.CastCouncilVote.class);
         register("cmdResult",      Messages.CommandResult.class);
         register("notifications",  Messages.Notifications.class);

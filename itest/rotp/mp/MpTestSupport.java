@@ -135,6 +135,8 @@ public final class MpTestSupport {
         public final BlockingQueue<Messages.SizeOptions> sizeOptions = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.DifficultyOptions> difficultyOptions = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.ColonyPreview> colonyPreviews = new LinkedBlockingQueue<>();
+        public final BlockingQueue<Messages.TechTradeMenu> diploMenus = new LinkedBlockingQueue<>();
+        public final BlockingQueue<Messages.TechCounterOffer> counterOffers = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.Error> errors = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.Notifications> notifications = new LinkedBlockingQueue<>();
         public final BlockingQueue<Messages.Prompts> prompts = new LinkedBlockingQueue<>();
@@ -142,29 +144,30 @@ public final class MpTestSupport {
         public final BlockingQueue<Messages.TurnStatus> turnStatuses = new LinkedBlockingQueue<>();
 
         private final WebSocketClient ws;
-        public volatile PlayerView lastView;
-
         private final String sessionToken;
-        public Client(int port, String name) throws Exception {
-            this.name = name;
+        public volatile PlayerView lastView;
         /** the token the server issued this connection (see Messages.Joined) */
         public volatile String issuedToken;
-            this.ws = new WebSocketClient(URI.create("ws://localhost:"+port)) {
-                @Override public void onOpen(ServerHandshake h) {
-                    Messages.Hello hello = new Messages.Hello();
-                    hello.version = Protocol.VERSION;
+
+        public Client(int port, String name) throws Exception {
             this(port, name, null);
         }
 
         /** connect replaying a session token, as a reconnecting browser client does */
         public Client(int port, String name, String sessionToken) throws Exception {
+            this.name = name;
+            this.sessionToken = sessionToken;
+            this.ws = new WebSocketClient(URI.create("ws://localhost:"+port)) {
+                @Override public void onOpen(ServerHandshake h) {
+                    Messages.Hello hello = new Messages.Hello();
+                    hello.version = Protocol.VERSION;
                     hello.playerName = Client.this.name;
+                    hello.sessionToken = Client.this.sessionToken;
                     send(Protocol.encode(hello));
                 }
                 @Override public void onMessage(String message) {
                     Object msg = Protocol.decode(message);
                     if (msg instanceof PlayerView) views.offer((PlayerView) msg);
-            this.sessionToken = sessionToken;
                     else if (msg instanceof Messages.CommandResult) results.offer((Messages.CommandResult) msg);
                     else if (msg instanceof Messages.DiploReply) replies.offer((Messages.DiploReply) msg);
                     else if (msg instanceof Messages.DesignCatalog) catalogs.offer((Messages.DesignCatalog) msg);
@@ -174,10 +177,11 @@ public final class MpTestSupport {
                         issuedToken = ((Messages.Joined) msg).sessionToken;
                         joins.offer((Messages.Joined) msg);
                     }
-                    hello.sessionToken = Client.this.sessionToken;
                     else if (msg instanceof Messages.SizeOptions) sizeOptions.offer((Messages.SizeOptions) msg);
                     else if (msg instanceof Messages.DifficultyOptions) difficultyOptions.offer((Messages.DifficultyOptions) msg);
                     else if (msg instanceof Messages.ColonyPreview) colonyPreviews.offer((Messages.ColonyPreview) msg);
+                    else if (msg instanceof Messages.TechTradeMenu) diploMenus.offer((Messages.TechTradeMenu) msg);
+                    else if (msg instanceof Messages.TechCounterOffer) counterOffers.offer((Messages.TechCounterOffer) msg);
                     else if (msg instanceof Messages.Notifications) notifications.offer((Messages.Notifications) msg);
                     else if (msg instanceof Messages.Prompts) prompts.offer((Messages.Prompts) msg);
                     else if (msg instanceof Messages.GameOver) gameOvers.offer((Messages.GameOver) msg);
@@ -332,23 +336,6 @@ public final class MpTestSupport {
         return out;
     }
 
-    /** true if any drained Notifications message carries an item of the given category */
-    public static boolean sawNotification(Client c, String category) {
-        for (Messages.Notifications ns : drain(c.notifications))
-            for (Messages.Notification n : ns.items)
-                if (category.equals(n.category))
-                    return true;
-        return false;
-    }
-
-    /** the first drained notification of the given category, or null if none */
-    public static Messages.Notification firstNotification(Client c, String category) {
-        for (Messages.Notifications ns : drain(c.notifications))
-            for (Messages.Notification n : ns.items)
-                if (category.equals(n.category))
-                    return n;
-        return null;
-    }
     /** every queued notification, flattened — drain once when a test asserts on
      * more than one category from the same turn */
     public static java.util.List<Messages.Notification> allNotifications(Client c) {
@@ -366,6 +353,23 @@ public final class MpTestSupport {
         return false;
     }
 
+    /** true if any drained Notifications message carries an item of the given category */
+    public static boolean sawNotification(Client c, String category) {
+        for (Messages.Notifications ns : drain(c.notifications))
+            for (Messages.Notification n : ns.items)
+                if (category.equals(n.category))
+                    return true;
+        return false;
+    }
+
+    /** the first drained notification of the given category, or null if none */
+    public static Messages.Notification firstNotification(Client c, String category) {
+        for (Messages.Notifications ns : drain(c.notifications))
+            for (Messages.Notification n : ns.items)
+                if (category.equals(n.category))
+                    return n;
+        return null;
+    }
 
     /** the first drained Prompt of the given type, or null if none has arrived */
     public static Messages.Prompt firstPrompt(Client c, String type) {

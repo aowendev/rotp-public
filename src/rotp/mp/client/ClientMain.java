@@ -355,6 +355,8 @@ public class ClientMain {
                             promptCouncilVote(frame, clientHolder[0], p);
                         else if ("COLONIZE".equals(p.type))
                             promptColonize(frame, clientHolder[0], p);
+                        else if ("INCOMING_TECH_REQUEST".equals(p.type))
+                            racesPanel.promptIncomingTechRequest(p);
                     }
                 }
                 handleMessage(msg, galaxyPanel, colonyPanel, systemInfoPanel, researchPanel, fleetsPanel, shipDesignPanel, empirePanel, racesPanel, lastView, status, nextTurn);
@@ -419,6 +421,13 @@ public class ClientMain {
             racesPanel.showReply(dr);
             status.setText("Diplomatic reply: " + (dr.accepted ? "accepted" : "refused")
                 + " your " + dr.action + " offer");
+        }
+        else if (msg instanceof Messages.TechTradeMenu) {
+            racesPanel.showAudience((Messages.TechTradeMenu) msg);
+        }
+        else if (msg instanceof Messages.TechCounterOffer) {
+            // the second half of a tech exchange: their price for what you asked for
+            racesPanel.showCounterOffer((Messages.TechCounterOffer) msg);
         }
         else if (msg instanceof Messages.Notifications) {
             Messages.Notifications ns = (Messages.Notifications) msg;
