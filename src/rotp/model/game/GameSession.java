@@ -201,11 +201,16 @@ public final class GameSession implements Base, Serializable {
             return;
         if (owner.isPlayer())
             spyActivity = true;
-        spyReportEmpires.add(owner.id);
+        spyReportEmpires().add(owner.id);
     }
     public boolean spyActivity()            { return spyActivity; }
-    /** empire ids that had new spy-report activity this turn (reset each turn) */
-    public java.util.Set<Integer> spyReportEmpires() { return spyReportEmpires; }
+    /** empire ids that had new spy-report activity this turn (reset each turn). Lazily
+     * created: the field is transient, so it is null after a save/load deserializes. */
+    public java.util.Set<Integer> spyReportEmpires() {
+        if (spyReportEmpires == null)
+            spyReportEmpires = new java.util.HashSet<>();
+        return spyReportEmpires;
+    }
     public void addSystemScouted(StarSystem sys) {
         systemsScouted().get("Scouts").add(sys);
     }
