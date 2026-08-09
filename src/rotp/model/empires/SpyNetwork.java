@@ -47,6 +47,18 @@ public final class SpyNetwork implements Base, Serializable {
     public enum Sabotage {
         FACTORIES, MISSILES, REBELS;
     }
+
+    /** carry out a sabotage mission of the given kind against a system. The single
+     * decision point for all three, so the multiplayer server and the AI path agree. */
+    public static void performSabotage(SabotageMission m, Sabotage kind, StarSystem sys) {
+        if ((m == null) || (kind == null) || (sys == null))
+            return;
+        switch (kind) {
+            case FACTORIES: m.destroyFactories(sys); break;
+            case MISSILES:  m.destroyMissileBases(sys); break;
+            case REBELS:    m.inciteRebellion(sys); break;
+        }
+    }
     public enum Mission {
         HIDE, SABOTAGE, ESPIONAGE;
     }
@@ -428,7 +440,28 @@ public final class SpyNetwork implements Base, Serializable {
             return;
 
         EspionageMission eMission = chooseTechToSteal(bestSpy, espionageChoices, allPossible);
-        
+
+        // multiplayer: a remote human picks which technology to steal, and cannot be
+        // asked mid-turn the way single-player blocks on a modal panel. The mission is
+        // left un-chosen here and parked for the server, which raises a STEAL_TECH
+        // prompt; completeEspionage() runs when they answer (or when the turn ends and
+        // their AI default is applied). Everything below depends on stolenTech(), which
+        // is why the choice cannot simply be deferred in place.
+        if (!eMission.hasStolenTech() && owner().isRemoteHuman()) {
+            rotp.ui.notifications.StealTechNotification.createDeferred(eMission, empire().id, bestSpy);
+            return;
+        }
+
+        completeEspionage(eMission, bestSpy);
+    }
+
+    /**
+     * The bookkeeping that follows a technology being chosen: record it on the spy
+     * report, note any framing, raise the incident if the spy was caught or is framing
+     * someone, and check whether that breaks a treaty. Split out of
+     * startEspionageMission so a remote human's deferred choice can run it later.
+     */
+    public void completeEspionage(EspionageMission eMission, Spy bestSpy) {
         report().stolenTech(eMission.stolenTech());
         Empire framedEmpire = eMission.framedEmpire();
         // log which empire we framed on our spy report, and the 
@@ -455,6 +488,12 @@ public final class SpyNetwork implements Base, Serializable {
 
         StarSystem randomSystem = random(empire().allColonizedSystems());
         EspionageMission eMission = new EspionageMission(this, spy, topTechs, randomSystem, possibleTechs);
+
+        // A remote human chooses for themselves, so leave the mission un-chosen and let
+        // the caller park it. isAIControlled() is true for them on the server, which is
+        // why this cannot key off that.
+        if (owner().isRemoteHuman())
+            return eMission;
 
         // ai will choose now.. player choice is deferred until UI is displayed
         if (owner().isAIControlled()) {
@@ -605,14 +644,16 @@ public final class SpyNetwork implements Base, Serializable {
             return;
         }
 
-        switch(sabotageChoice) {
-            case FACTORIES:
-                eMission.destroyFactories(chosenSystem); break;
-            case MISSILES:
-                eMission.destroyMissileBases(chosenSystem); break;
-            case REBELS:
-                eMission.inciteRebellion(chosenSystem); break;
+        // multiplayer: a remote human picks their own sabotage. isAIControlled() is true
+        // for them on the server, which is why this cannot key off the branch above.
+        // Queue it for the server to raise as a prompt; an unanswered one falls back to
+        // the AI's choice when the turn resolves.
+        if (owner().isRemoteHuman()) {
+            SabotageNotification.createDeferred(eMission, chosenSystem.id);
+            return;
         }
+
+        performSabotage(eMission, sabotageChoice, chosenSystem);
     }
     public ShipView shipViewFor(ShipDesign d) {
         for (ShipView sv : shipViews) {

@@ -18,8 +18,33 @@ package rotp.ui.notifications;
 import rotp.model.empires.SabotageMission;
 import rotp.ui.RotPUI;
 
-public class SabotageNotification {
+public class SabotageNotification implements TurnNotification {
     public static void addMission(SabotageMission mission, int sysId) {
         RotPUI.instance().selectSabotagePanel(mission, sysId);
     }
+
+    // ---- multiplayer ----
+    // A remote human picks their own sabotage. Single-player does it by blocking on a
+    // modal panel above, which a headless server cannot do, so the mission is queued
+    // for the server to raise as a prompt instead.
+
+    private final SabotageMission mission;
+    private final int sysId;
+
+    public static SabotageNotification createDeferred(SabotageMission m, int systemId) {
+        SabotageNotification n = new SabotageNotification(m, systemId);
+        rotp.model.game.GameSession.instance().addTurnNotification(n);
+        return n;
+    }
+    private SabotageNotification(SabotageMission m, int systemId) {
+        mission = m;
+        sysId = systemId;
+    }
+    public SabotageMission mission()  { return mission; }
+    public int systemId()             { return sysId; }
+
+    @Override
+    public String displayOrder() { return SABOTAGE; }
+    @Override
+    public void notifyPlayer() { }   // multiplayer only; there is no local player to ask
 }

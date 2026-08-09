@@ -110,4 +110,10 @@ public class EspionageMission implements Base, Serializable {
     public Tech techChoice(String id)     { return tech(techChoices.get(id)); }
     public List<Empire> empiresToFrame()  { return empiresToFrame; }
     public List<String> possibleTechs(String id)  { return techPossibles.containsKey(id) ? techPossibles.get(id) : new ArrayList<>(); }
+    /** the technology categories this mission could steal from — MOO1 asks the player
+     * to pick a category, and techChoice(catId) is what they get from it. Exposed for
+     * the multiplayer server, which offers the same choice over the wire. */
+    public List<String> techCategoryIds()        { return new ArrayList<>(techPossibles.keySet()); }
+    /** the network that ran this mission, so a deferred choice can be completed later */
+    public SpyNetwork spyNetwork()               { return spies; }
 }

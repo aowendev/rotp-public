@@ -115,6 +115,8 @@ life of a game and are what you send back.
 | `setSpySpending` | `empireId:int`, `allocation:int` | 0–20 ticks against one empire. |
 | `setSpyMission` | `empireId:int`, `mission:string` | `HIDE` \| `ESPIONAGE` \| `SABOTAGE`. |
 | `setSpyFrame` | `empireId:int`, `frameEmpireId:int` | Standing preference: if your spy is caught stealing from `empireId`, pin it on `frameEmpireId`. `-1` frames nobody. You cannot frame yourself or the victim. |
+| `stealTech` | `empireId:int`, `categoryId:string` | Answer to a `STEAL_TECH` prompt: which technology category your spies take from. |
+| `sabotage` | `empireId:int`, `action:string` | Answer to a `SABOTAGE` prompt: `FACTORIES` \| `MISSILES` \| `REBELS`. |
 
 ### 2.7 Diplomacy
 
@@ -236,6 +238,8 @@ Ignoring is a real choice with real consequences, not an error state.
 | `COLONIZE` | `systemId` | `colonize` — ignoring leaves the ship in orbit and re-asks next turn |
 | `INCOMING_TECH_REQUEST` | `empireId`, `techId`, `techName`, `choiceIds`, `choiceNames` (their techs you may demand) | `respondTechRequest` — ignoring refuses, and the request lapses with the turn |
 | `BOMBARD` | `systemId`, `empireId` (the victim) | `bombard` — ignoring bombs nothing and re-asks next turn while you hold orbit |
+| `STEAL_TECH` | `empireId` (the victim), `choiceIds` (technology categories), `choiceNames` (the tech each would yield) | `stealTech` — **ignoring does not lose the theft**: your own AI picks when the turn resolves |
+| `SABOTAGE` | `empireId` (the victim), `systemId`, `choiceIds` (`FACTORIES`/`MISSILES`/`REBELS`), `choiceNames` (each naming the system it hits) | `sabotage` — ignoring lets your AI choose when the turn resolves |
 
 `Prompt` fields: `type`, `category`, `text`, `choiceIds:string[]`,
 `choiceNames:string[]`, `empireId`, `action`, `systemId`, `techId`, `techName`.
@@ -259,8 +263,6 @@ usable as a fallback, but the structured fields are there so you can write your 
 
 Being added to the server. Do not design around their absence.
 
-- **Choosing which technology to steal** after a successful espionage mission, and
-  **choosing a sabotage target** — currently decided for the player.
 - **Joint war offers** — the one diplomatic action with no protocol equivalent.
 
 ## 8. Deliberately absent

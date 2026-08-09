@@ -374,6 +374,10 @@ public class ClientMain {
                             racesPanel.promptIncomingTechRequest(p);
                         else if ("BOMBARD".equals(p.type))
                             promptBombard(frame, clientHolder[0], p);
+                        else if ("STEAL_TECH".equals(p.type))
+                            promptStealTech(frame, clientHolder[0], p);
+                        else if ("SABOTAGE".equals(p.type))
+                            promptSabotage(frame, clientHolder[0], p);
                     }
                 }
                 handleMessage(msg, galaxyPanel, colonyPanel, systemInfoPanel, researchPanel, fleetsPanel, shipDesignPanel, empirePanel, racesPanel, lastView, status, nextTurn);
@@ -542,6 +546,54 @@ public class ClientMain {
             Messages.Bombard b = new Messages.Bombard();
             b.systemId = p.systemId;
             client.sendMessage(b);
+        }
+    }
+
+    /**
+     * Your spies are inside — choose what they take. Dismissing does not lose the
+     * theft: the server settles it with your empire's AI pick when the turn resolves.
+     */
+    private static void promptStealTech(JFrame frame, NetClient client, Messages.Prompt p) {
+        if ((p.choiceNames == null) || (p.choiceNames.length == 0))
+            return;
+        String pick = (String) javax.swing.JOptionPane.showInputDialog(frame,
+            (p.text == null ? "What do your spies steal?" : p.text),
+            "Espionage", javax.swing.JOptionPane.PLAIN_MESSAGE, null,
+            p.choiceNames, p.choiceNames[0]);
+        if (pick == null)
+            return;
+        for (int i = 0; i < p.choiceNames.length; i++) {
+            if (p.choiceNames[i].equals(pick)) {
+                Messages.StealTech st = new Messages.StealTech();
+                st.empireId = p.empireId;
+                st.categoryId = p.choiceIds[i];
+                client.sendMessage(st);
+                return;
+            }
+        }
+    }
+
+    /**
+     * Your saboteurs are in position — choose the damage. Each option names the system
+     * it hits. Dismissing lets your empire's AI decide when the turn resolves.
+     */
+    private static void promptSabotage(JFrame frame, NetClient client, Messages.Prompt p) {
+        if ((p.choiceNames == null) || (p.choiceNames.length == 0))
+            return;
+        String pick = (String) javax.swing.JOptionPane.showInputDialog(frame,
+            (p.text == null ? "What do your saboteurs do?" : p.text),
+            "Sabotage", javax.swing.JOptionPane.PLAIN_MESSAGE, null,
+            p.choiceNames, p.choiceNames[0]);
+        if (pick == null)
+            return;
+        for (int i = 0; i < p.choiceNames.length; i++) {
+            if (p.choiceNames[i].equals(pick)) {
+                Messages.Sabotage sb = new Messages.Sabotage();
+                sb.empireId = p.empireId;
+                sb.action = p.choiceIds[i];
+                client.sendMessage(sb);
+                return;
+            }
         }
     }
 

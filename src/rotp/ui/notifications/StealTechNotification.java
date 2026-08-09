@@ -22,10 +22,30 @@ import rotp.ui.RotPUI;
 public class StealTechNotification implements TurnNotification {
     EspionageMission mission;
     int empId;
+    private rotp.model.empires.Spy spy;      // multiplayer: needed to finish the mission later
+    private boolean deferred;                // multiplayer: awaiting a remote human's choice
 
     public static void create(EspionageMission t, int empId) {
         GameSession.instance().addTurnNotification(new StealTechNotification(t, empId));
     }
+    /**
+     * Multiplayer: the espionage succeeded but the technology has not been chosen,
+     * because the choice belongs to a remote human who cannot be asked mid-turn. The
+     * server picks this up and raises a prompt; the spy is carried along so the
+     * mission can be completed once they answer.
+     */
+    public static StealTechNotification createDeferred(EspionageMission t, int empId,
+                                                       rotp.model.empires.Spy s) {
+        StealTechNotification n = new StealTechNotification(t, empId);
+        n.spy = s;
+        n.deferred = true;
+        GameSession.instance().addTurnNotification(n);
+        return n;
+    }
+    public EspionageMission mission()          { return mission; }
+    public int empireId()                      { return empId; }
+    public rotp.model.empires.Spy spy()        { return spy; }
+    public boolean deferred()                  { return deferred; }
     public StealTechNotification(EspionageMission t, int id) {
         mission = t;
         empId = id;
@@ -34,6 +54,8 @@ public class StealTechNotification implements TurnNotification {
     public String displayOrder() { return STEAL_TECH; }
     @Override
     public void notifyPlayer() {
+        if (deferred)
+            return;      // multiplayer only; there is no local player to ask
         if (mission.hasStolenTech())
             RotPUI.instance().selectStealTechPanel(mission, empId);
         else

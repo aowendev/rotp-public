@@ -478,6 +478,28 @@ public final class Messages {
     }
 
     /**
+     * client -> server: the answer to a STEAL_TECH prompt. Your spy got in and you
+     * choose what they take — categoryId is one of the prompt's choices, and the
+     * technology you receive is the one the prompt showed for it. Ignoring the prompt
+     * is not a lost theft: when the turn resolves your empire's AI picks for you.
+     */
+    public static class StealTech {
+        public int empireId;        // the empire being stolen from
+        public String categoryId;   // technology category to take from
+    }
+
+    /**
+     * client -> server: the answer to a SABOTAGE prompt. `action` is one of the
+     * prompt's choices — FACTORIES, MISSILES or REBELS — and the target system is the
+     * one the prompt showed against it. Ignoring the prompt lets your empire's AI
+     * choose when the turn resolves; the spy is already in position either way.
+     */
+    public static class Sabotage {
+        public int empireId;     // the empire being sabotaged
+        public String action;    // FACTORIES | MISSILES | REBELS
+    }
+
+    /**
      * client -> server: the answer to a BOMBARD prompt — your fleet is in orbit over
      * a colony you are aggressive with, and may bomb it. Ship combat auto-resolves in
      * multiplayer (a tactical battle would stall every other player), but the decision

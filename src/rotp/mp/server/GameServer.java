@@ -90,6 +90,17 @@ public class GameServer extends WebSocketServer {
      * was never offered. Unanswered requests lapse when the turn resolves.
      */
     private final Map<Integer, List<Messages.Prompt>> pendingTechRequests = new HashMap<>();
+    /**
+     * Espionage missions that succeeded but whose technology a remote human has not
+     * chosen yet, keyed by the thief's empire id. Unlike a tech request these are NOT
+     * dropped when the turn resolves — an unanswered one is finalized with that
+     * empire's AI pick, because the theft already happened and silently losing it
+     * would be worse than choosing badly.
+     */
+    private final Map<Integer, List<rotp.ui.notifications.StealTechNotification>> pendingSteals = new HashMap<>();
+    /** sabotage missions in position but not yet directed by a remote human, keyed by
+     * the saboteur's empire id. Finalized with the AI's choice if left unanswered. */
+    private final Map<Integer, List<rotp.ui.notifications.SabotageNotification>> pendingSabotage = new HashMap<>();
     /** public galactic news (GNN) from this turn, broadcast to every client as NEWS notifications */
     private final List<Messages.Notification> pendingPublicNews = new ArrayList<>();
     /** combat/spy GameAlerts from this turn, keyed by the recipient empire id (the human
@@ -335,6 +346,10 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "threaten", (Messages.Threaten) msg);
         else if (msg instanceof Messages.Bombard)
             handleCommand(conn, "bombard", (Messages.Bombard) msg);
+        else if (msg instanceof Messages.StealTech)
+            handleCommand(conn, "stealTech", (Messages.StealTech) msg);
+        else if (msg instanceof Messages.Sabotage)
+            handleCommand(conn, "sabotage", (Messages.Sabotage) msg);
         else if (msg instanceof Messages.CastCouncilVote)
             handleCommand(conn, "castCouncilVote", (Messages.CastCouncilVote) msg);
         else if (msg instanceof Messages.DesignCatalog)
@@ -940,6 +955,8 @@ public class GameServer extends WebSocketServer {
                 // finish any council vote a human left unanswered before advancing, so
                 // the convention closes (using AI defaults) instead of re-convening
                 finalizePendingCouncilVote();
+                finalizePendingSteals();
+                finalizePendingSabotage();
                 keepGalaxyTurning();
                 session.nextTurn();
                 // nextTurn() spawns the turn thread; wait for it to finish
@@ -1070,6 +1087,10 @@ public class GameServer extends WebSocketServer {
                 err = applyThreaten(conn, emp, (Messages.Threaten) cmd);
             else if (cmd instanceof Messages.Bombard)
                 err = applyBombard(emp, (Messages.Bombard) cmd);
+            else if (cmd instanceof Messages.StealTech)
+                err = applyStealTech(emp, (Messages.StealTech) cmd);
+            else if (cmd instanceof Messages.Sabotage)
+                err = applySabotage(emp, (Messages.Sabotage) cmd);
             else
                 err = applyCastCouncilVote(emp, (Messages.CastCouncilVote) cmd);
         }
@@ -2224,6 +2245,10 @@ public class GameServer extends WebSocketServer {
                     collectColonizePrompt((ColonizeSystemNotification) tn);
                 else if (tn instanceof rotp.ui.notifications.BombardSystemNotification)
                     collectBombardPrompt((rotp.ui.notifications.BombardSystemNotification) tn);
+                else if (tn instanceof rotp.ui.notifications.StealTechNotification)
+                    collectStealTechPrompt((rotp.ui.notifications.StealTechNotification) tn);
+                else if (tn instanceof rotp.ui.notifications.SabotageNotification)
+                    collectSabotagePrompt((rotp.ui.notifications.SabotageNotification) tn);
                 else if (tn instanceof rotp.ui.notifications.PublicNews)
                     collectPublicNews((rotp.ui.notifications.PublicNews) tn);
             }
@@ -2341,6 +2366,209 @@ public class GameServer extends WebSocketServer {
         p.empireId = owner.sv.empId(sysId);
         p.text = "Bombard " + colonizeTargetName(owner, sysId) + "?";
         pendingPrompts.computeIfAbsent(owner.id, k -> new ArrayList<>()).add(p);
+    }
+
+    /**
+     * A remote human's spy got in and they choose what to take. MOO1 asks for a
+     * technology *category*; the mission has already decided which tech within each
+     * one, so the prompt shows both. Single-player blocks on a modal panel here, which
+     * a server cannot do, so the mission is parked until they answer.
+     */
+    private void collectStealTechPrompt(rotp.ui.notifications.StealTechNotification sn) {
+        if (!sn.deferred() || (sn.mission() == null))
+            return;
+        Empire thief = galaxy().empire(sn.mission().spyEmpire().id);
+        Empire victim = galaxy().empire(sn.empireId());
+        if ((thief == null) || (victim == null))
+            return;
+        List<String> ids = new ArrayList<>();
+        List<String> names = new ArrayList<>();
+        for (String catId : sn.mission().techCategoryIds()) {
+            Tech t = sn.mission().techChoice(catId);
+            if (t == null)
+                continue;
+            ids.add(catId);
+            names.add(t.name());
+        }
+        if (ids.isEmpty())
+            return;
+        pendingSteals.computeIfAbsent(thief.id, k -> new ArrayList<>()).add(sn);
+        Messages.Prompt p = new Messages.Prompt();
+        p.type = "STEAL_TECH";
+        p.category = -1;
+        p.empireId = victim.id;
+        p.text = "Your spies are inside the "+victim.name()+" network. What do they take?";
+        p.choiceIds = ids.toArray(new String[0]);
+        p.choiceNames = names.toArray(new String[0]);
+        pendingPrompts.computeIfAbsent(thief.id, k -> new ArrayList<>()).add(p);
+    }
+
+    /** resolve a STEAL_TECH prompt: take the technology from the chosen category */
+    private String applyStealTech(Empire emp, Messages.StealTech cmd) {
+        rotp.ui.notifications.StealTechNotification sn = takePendingSteal(emp.id, cmd.empireId);
+        if (sn == null)
+            return "No technology is waiting to be stolen from that empire";
+        Tech chosen = (cmd.categoryId == null) ? null : sn.mission().techChoice(cmd.categoryId);
+        if (chosen == null)
+            return "That is not a category your spies can steal from";
+        finishSteal(sn, chosen);
+        return null;
+    }
+
+    /** take the parked mission for this thief against this victim, or null */
+    private rotp.ui.notifications.StealTechNotification takePendingSteal(int thiefId, int victimId) {
+        List<rotp.ui.notifications.StealTechNotification> queued = pendingSteals.get(thiefId);
+        if (queued == null)
+            return null;
+        for (java.util.Iterator<rotp.ui.notifications.StealTechNotification> it = queued.iterator(); it.hasNext(); ) {
+            rotp.ui.notifications.StealTechNotification sn = it.next();
+            if (sn.empireId() == victimId) {
+                it.remove();
+                return sn;
+            }
+        }
+        return null;
+    }
+
+    private void finishSteal(rotp.ui.notifications.StealTechNotification sn, Tech chosen) {
+        sn.mission().stealTech(chosen);
+        if (sn.mission().canFrame())
+            sn.mission().frameEmpire(frameChoiceFor(sn.mission()));
+        sn.mission().spyNetwork().completeEspionage(sn.mission(), sn.spy());
+    }
+
+    /** honour the thief's standing frame preference, if that empire is framable here */
+    private Empire frameChoiceFor(rotp.model.empires.EspionageMission m) {
+        Empire thief = m.spyEmpire();
+        Empire victim = galaxy().empire(m.spyNetwork().empire().id);
+        if ((thief == null) || (victim == null))
+            return null;
+        EmpireView ev = thief.viewForEmpire(victim);
+        int target = (ev == null) ? -1 : ev.spies().frameTarget();
+        if (target < 0)
+            return null;
+        for (Empire e : m.empiresToFrame())
+            if ((e != null) && (e.id == target))
+                return e;
+        return null;
+    }
+
+    /**
+     * Before a turn resolves, settle any theft the human left unanswered using their
+     * empire's own AI pick. The technology was already taken — dropping it because
+     * nobody clicked would be a worse outcome than an unchosen one, and it would leave
+     * the mission's incident and spy-report bookkeeping half-done.
+     */
+    private void finalizePendingSteals() {
+        for (List<rotp.ui.notifications.StealTechNotification> queued : pendingSteals.values()) {
+            for (rotp.ui.notifications.StealTechNotification sn : queued) {
+                try {
+                    List<Tech> options = new ArrayList<>();
+                    for (String catId : sn.mission().techCategoryIds()) {
+                        Tech t = sn.mission().techChoice(catId);
+                        if (t != null)
+                            options.add(t);
+                    }
+                    if (options.isEmpty())
+                        continue;
+                    Empire thief = sn.mission().spyEmpire();
+                    finishSteal(sn, thief.ai().scientist().mostDesirableTech(options));
+                }
+                catch (RuntimeException e) {
+                    System.out.println("[server] could not finalize a pending tech theft: " + e);
+                }
+            }
+        }
+        pendingSteals.clear();
+    }
+
+    /**
+     * A remote human's saboteur is in position and they choose the damage. Each option
+     * names the system it would hit, so the target is part of the choice rather than
+     * hidden behind it.
+     */
+    private void collectSabotagePrompt(rotp.ui.notifications.SabotageNotification sn) {
+        rotp.model.empires.SabotageMission m = sn.mission();
+        if (m == null)
+            return;
+        Empire saboteur = m.spies().owner();
+        Empire victim = m.target();
+        StarSystem sys = galaxy().system(sn.systemId());
+        if ((saboteur == null) || (victim == null) || (sys == null))
+            return;
+        String where = colonizeTargetName(saboteur, sn.systemId());
+        pendingSabotage.computeIfAbsent(saboteur.id, k -> new ArrayList<>()).add(sn);
+        Messages.Prompt p = new Messages.Prompt();
+        p.type = "SABOTAGE";
+        p.category = -1;
+        p.empireId = victim.id;
+        p.systemId = sn.systemId();
+        p.text = "Your saboteurs are in position at "+where+". What do they do?";
+        p.choiceIds = new String[]{"FACTORIES", "MISSILES", "REBELS"};
+        p.choiceNames = new String[]{
+            "Destroy factories at "+where,
+            "Destroy missile bases at "+where,
+            "Incite rebellion at "+where};
+        pendingPrompts.computeIfAbsent(saboteur.id, k -> new ArrayList<>()).add(p);
+    }
+
+    /** resolve a SABOTAGE prompt */
+    private String applySabotage(Empire emp, Messages.Sabotage cmd) {
+        rotp.ui.notifications.SabotageNotification sn = takePendingSabotage(emp.id, cmd.empireId);
+        if (sn == null)
+            return "You have no saboteurs in position against that empire";
+        rotp.model.empires.SpyNetwork.Sabotage kind = sabotageKind(cmd.action);
+        if (kind == null)
+            return "Action must be FACTORIES, MISSILES, or REBELS";
+        rotp.model.empires.SpyNetwork.performSabotage(sn.mission(), kind, galaxy().system(sn.systemId()));
+        return null;
+    }
+
+    private static rotp.model.empires.SpyNetwork.Sabotage sabotageKind(String action) {
+        if (action == null)
+            return null;
+        switch (action.toUpperCase()) {
+            case "FACTORIES": return rotp.model.empires.SpyNetwork.Sabotage.FACTORIES;
+            case "MISSILES":  return rotp.model.empires.SpyNetwork.Sabotage.MISSILES;
+            case "REBELS":    return rotp.model.empires.SpyNetwork.Sabotage.REBELS;
+            default:          return null;
+        }
+    }
+
+    private rotp.ui.notifications.SabotageNotification takePendingSabotage(int saboteurId, int victimId) {
+        List<rotp.ui.notifications.SabotageNotification> queued = pendingSabotage.get(saboteurId);
+        if (queued == null)
+            return null;
+        for (java.util.Iterator<rotp.ui.notifications.SabotageNotification> it = queued.iterator(); it.hasNext(); ) {
+            rotp.ui.notifications.SabotageNotification sn = it.next();
+            Empire victim = sn.mission().target();
+            if ((victim != null) && (victim.id == victimId)) {
+                it.remove();
+                return sn;
+            }
+        }
+        return null;
+    }
+
+    /** settle any sabotage the human left undirected, using their own AI's choice */
+    private void finalizePendingSabotage() {
+        for (List<rotp.ui.notifications.SabotageNotification> queued : pendingSabotage.values()) {
+            for (rotp.ui.notifications.SabotageNotification sn : queued) {
+                try {
+                    rotp.model.empires.SabotageMission m = sn.mission();
+                    Empire saboteur = m.spies().owner();
+                    rotp.model.empires.SpyNetwork.Sabotage kind =
+                        saboteur.spyMasterAI().bestSabotageChoice(m.spies().view());
+                    if (kind == null)
+                        kind = rotp.model.empires.SpyNetwork.Sabotage.FACTORIES;
+                    rotp.model.empires.SpyNetwork.performSabotage(m, kind, galaxy().system(sn.systemId()));
+                }
+                catch (RuntimeException e) {
+                    System.out.println("[server] could not finalize pending sabotage: " + e);
+                }
+            }
+        }
+        pendingSabotage.clear();
     }
 
     /** resolve a BOMBARD prompt: bomb the colony this fleet is orbiting */

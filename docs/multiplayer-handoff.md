@@ -42,10 +42,10 @@ a council vote that survives save/load, the fuller diplomacy backend (tech excha
 counter-offers, aid, threats), per-empire multi-human outcomes, and the bombardment
 choice. **Ship combat auto-resolves by decision** (2026-08-09) — a tactical battle would
 stall every other player — so only the decisions *around* combat are on the wire.
-**Four items remain open, all confirmed in scope** (user, 2026-08-09 — not to be dropped
-or pushed to Phase 5): the steal-tech and sabotage-target choices, joint war offers, and a
-written protocol spec. Plus **server error-hardening** as a standing requirement (anything
-that could cause an error on the server must be resolved before Phase 5). Hosting moved to **Phase 6** (Scaleway for initial testing;
+**One item remains open** (steal-tech and sabotage-target landed 2026-08-09; the four
+were all confirmed in scope by the user, not to be dropped or pushed to
+Phase 5): **joint war offers**. Plus **server error-hardening** as a standing requirement
+(anything that could cause an error on the server must be resolved before Phase 5). Hosting moved to **Phase 6** (Scaleway for initial testing;
 it also owes a front end that spins up a JVM per game). **Phase 5 is a separate private
 repo**, not under the ROTP licence.
 **108 tests green, 1 skip (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
@@ -784,6 +784,13 @@ See **"Then — Phase 4 — what is still missing"** for the outstanding list.
 
 ### Then — Phase 4 — what is still missing
 
+**REGRESSION NOTE (2026-08-09): the espionage changes were verified against the classes
+that exercise them** — `SpyDiplomacyTest`, `CombatSpyAlertTest`, `StealTechPromptTest`,
+`SabotagePromptTest`, all green — plus 24 further classes with 0 failures. The full
+35-class suite could **not** be completed in one pass: the machine wedged repeatedly (see
+the test-env note), so roughly 10 classes unrelated to `SpyNetwork` are unverified against
+this change. Worth a clean full run before the next commit lands on top.
+
 **Not yet validated by human-vs-human play.** Everything below and everything already
 landed is proven only by in-process tests, where latency is zero and both clients share a
 JVM. A first two-machine LAN game (2026-08-09) got as far as both players joining from
@@ -796,13 +803,27 @@ currently cannot. Everything here is a Phase-4 blocker under the definition abov
 > **ALL FOUR CONFIRMED IN SCOPE (user, 2026-08-09).** None of these are to be dropped or
 > pushed into Phase 5. Do not re-litigate; build them.
 
-**The four remaining items:**
+**Remaining: one.**
 
-1. **`StealTechNotification` — which technology to steal.** After a successful espionage
-   mission MOO1 lets you pick; a remote human never sees the choice, so the AI takes it.
-2. **`SabotageNotification` — the sabotage target** (which colony's bases or factories).
-   Likewise chosen for the player today.
-3. **Joint war offers** — `receiveOfferJointWar` / `receiveCounterJointWar` and
+1. **`StealTechNotification` — which technology to steal — DONE (2026-08-09).** Harder
+   than the bombard prompt, because single-player *blocks turn processing* on a modal
+   panel and a server cannot. The bookkeeping that follows a choice (spy report, framing,
+   the espionage incident, treaty break) was split out of `startEspionageMission` into
+   `SpyNetwork.completeEspionage`, so a deferred choice can run it later. A remote
+   human's mission is parked in `pendingSteals`, raised as a STEAL_TECH prompt offering
+   the tech *categories* (MOO1's choice) with the technology each would yield, and
+   resolved by `stealTech{empireId, categoryId}`. **An unanswered theft is finalized with
+   that empire's own AI pick at end of turn, not dropped** — the theft already happened,
+   and losing it silently would be worse than an unchosen tech, besides leaving the
+   incident bookkeeping half-done. Tests: `StealTechPromptTest` (3).
+2. **`SabotageNotification` — the sabotage target — DONE (2026-08-09).** The class was
+   not even a `TurnNotification`; it gained a deferred variant that is. The three-way
+   action switch moved into `SpyNetwork.performSabotage` so the AI path and the wire path
+   cannot drift. The prompt offers FACTORIES / MISSILES / REBELS **each labelled with the
+   system it would hit**, so the target is part of the visible choice rather than hidden
+   behind it; resolved by `sabotage{empireId, action}`, and likewise finalized with the
+   AI's choice if ignored. Tests: `SabotagePromptTest` (3).
+3. **Joint war offers — STILL OPEN.** The last one. — `receiveOfferJointWar` / `receiveCounterJointWar` and
    `DiplomacyJointWarMenu` have no protocol equivalent. The last audience action missing.
 4. **A written protocol specification — DONE (2026-08-09), and published here as an
    OPEN STANDARD.** `docs/protocol.md` (message reference) and
@@ -824,11 +845,12 @@ currently cannot. Everything here is a Phase-4 blocker under the definition abov
    **When the protocol changes, change the spec in the same commit** — it lives beside
    the implementation precisely so that is possible.
 
-(1) and (2) are **queued turn-notifications the server does not yet convert into
-prompts** — the *same shape* as COLONIZE / INCOMING_DIPLOMACY and now BOMBARD, all of
-which are done: the engine queues a notification, `collectPostTurnPrompts` turns it into
-a prompt, and a command resolves it. The pattern is proven three times over, so these are
-tractable; follow `collectBombardPrompt` and `applyBombard` as the template.
+A pattern worth reusing for the last item and anything like it: the engine queues a
+notification, `collectPostTurnPrompts` turns it into a prompt, a command resolves it, and
+a `finalize*` step at the start of the next turn applies the AI default if the human
+never answered. Five prompts now work this way. The wrinkle the espionage ones added:
+when single-player completes the action *inline* after a modal choice, the post-choice
+work has to be split into a method the deferred path can call later.
 
 Alongside them, **server error-hardening** continues as a standing requirement rather than
 a discrete item (see its section below): long-running fuzzing, oversized payloads and
