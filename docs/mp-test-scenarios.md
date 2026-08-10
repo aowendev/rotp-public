@@ -1,4 +1,14 @@
-# Human-vs-human test scenarios
+# Phase 4.5 — human-vs-human test scenarios
+
+**This checklist is the whole of Phase 4.5.** Phase 4 put every decision a desktop player
+can make onto the wire; this is how we find out whether that is actually true. Phase 5
+(the browser client) does not start until it passes — the value of the backend sign-off
+is that a bug found there is conclusively a *client* bug, and that only holds once the
+backend has met real play.
+
+**Exit criteria:** the checklist passes end to end, a session of deliberate abuse
+produces no server stack traces, and anything it turns up is fixed. Fixes are Phase-4
+work; finding them is this phase.
 
 A checklist for two machines and two people. Everything here is either **only
 provable with two real humans** or **implemented but never exercised outside an
@@ -207,6 +217,9 @@ Not gaps; decisions.
 ---
 
 ## Reporting
+
+Tick items as they pass, and note the date at the top when a full pass completes — that
+is the record that Phase 4.5 is done.
 
 For anything that fails, the useful details are: which player (Alice/empire 0 or
 Bob/empire 1), the turn number, what each client showed, and the server's stdout

@@ -35,21 +35,26 @@ factories sabotaged, tech stolen, spy report, ...) are delivered to the affected
 ALERT notifications, routed per-recipient (works in a 2-human game). Prompts (1-4) ride a
 reusable `Prompts` message. **Backend hardening (2026-08-09) then closed out the multi-human
 gaps as a pre-Phase-5 gate**: per-recipient alert routing, GNN ranking bulletins as NEWS, a
-host turn-timer lobby pick, and a 2-human end-to-end test foundation. **Phase 4:
-implementation essentially complete, NOT yet validated by human-vs-human play.** Landed:
-reserve fund transfers, browser-grade reconnection via session tokens, contact-via-war,
-a council vote that survives save/load, the fuller diplomacy backend (tech exchange with
-counter-offers, aid, threats), per-empire multi-human outcomes, and the bombardment
-choice. **Ship combat auto-resolves by decision** (2026-08-09) — a tactical battle would
-stall every other player — so only the decisions *around* combat are on the wire.
-**Phase 4's functional work is COMPLETE (2026-08-10)** — the last item, joint war,
-landed. What remains before Phase 4 can be called done is **validation by human-vs-human
-play** (`mp-test-scenarios.md`) and the standing server-hardening requirement. Historical
-note: this list previously read (steal-tech and sabotage-target landed 2026-08-09; the four
-were all confirmed in scope as one open item, joint war offers. Hosting moved to **Phase 6** (Scaleway for initial testing;
-it also owes a front end that spins up a JVM per game). **Phase 5 is a separate private
-repo**, not under the ROTP licence.
-**117 tests green, 1 skip (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
+host turn-timer lobby pick, and a 2-human end-to-end test foundation.
+
+**PHASE 4 IS COMPLETE (2026-08-10).** Redefined mid-phase (user, 2026-08-09) from
+"internet hosting" to *every decision a desktop player can make must be reachable over
+the protocol*. Landed: reserve fund transfers (both directions), browser-grade
+reconnection via session tokens, contact-via-war, a council vote that survives save/load,
+the fuller diplomacy backend (tech exchange with counter-offers, aid, threats, joint war),
+per-empire multi-human outcomes, AI takeover for dropped players, the bombard /
+steal-tech / sabotage choices, server error-hardening, and a **CC0 protocol
+specification** published in this repo. **Ship combat auto-resolves by decision** — a
+tactical battle would stall every other player — so only the decisions *around* combat
+are on the wire.
+
+**PHASE 4.5 — manual two-machine verification — IS THE CURRENT WORK.** Everything above
+is proven only in-process. The checklist is **`docs/mp-test-scenarios.md`**; do not start
+Phase 5 until it passes. **Phase 5** is the browser client, in a **separate private repo**
+not under the ROTP licence. **Phase 6** is hosting (Scaleway for initial testing — their
+VMs are not free) plus a front end that spins up a JVM per game.
+
+**117 tests green, 1 skip (incl. 2-human).** See "Then — Phase 4" / "Then — Phase 4.5"._
 
 ## Where we are
 
@@ -792,11 +797,10 @@ See **"Then — Phase 4 — what is still missing"** for the outstanding list.
 
 ### Then — Phase 4 — what is still missing
 
-**Not yet validated by human-vs-human play.** Everything below and everything already
-landed is proven only by in-process tests, where latency is zero and both clients share a
-JVM. A first two-machine LAN game (2026-08-09) got as far as both players joining from
-separate Macs, a galaxy generating and turns resolving; the rest is unexercised. The
-checklist is **`mp-test-scenarios.md`** — treat Phase 4 as unfinished until it passes.
+**Not yet validated by human-vs-human play — that is Phase 4.5**, see below. Everything
+here is proven only by in-process tests. A first two-machine LAN game (2026-08-09) got as
+far as both players joining from separate Macs, a galaxy generating and turns resolving;
+the rest is unexercised.
 
 Found by auditing the engine for decisions a *local* human makes that a remote human
 currently cannot. Everything here is a Phase-4 blocker under the definition above.
@@ -998,6 +1002,39 @@ live connection, which no save can carry. No effect on single-player, where `rem
 is false and `decidedByAI()` keeps its original meaning exactly.
 Tests: `AwayFromKeyboardTest` (2).
 
+## Then — Phase 4.5: manual testing and verification — **CURRENT**
+
+Phase 4 put every decision on the wire. Phase 4.5 finds out whether that is true.
+
+**Why it is a phase and not a checkbox.** Everything in Phase 4 is proven by in-process
+integration tests: 117 of them, but all in one JVM, with zero latency, both "clients"
+sharing a heap, and whatever galaxy the unseeded RNG produced. None of that resembles two
+people on two machines. Phase 1.5 did exactly this job for the single-player loop and
+surfaced a batch of gaps no test had — the same is likely here.
+
+**The work is `docs/mp-test-scenarios.md`**, ordered by risk. Its riskiest sections:
+- **Elimination and victory.** All new code, because the engine cannot express a
+  non-empire-0 outcome at all. Includes the case where empire 0 dying used to freeze the
+  galaxy for everyone.
+- **Bombardment.** Its integration test skips on a turn-1 galaxy, so play is the *first*
+  real exercise of that path.
+- **Espionage and joint war.** Newest, least exercised, added after the checklist was
+  written.
+- **Try to break the server.** Force-quits, pulled network cables, simultaneous readies,
+  spammed buttons. **Any stack trace on the server is a Phase-4 bug**, even if the game
+  carries on.
+
+**Also in scope**, the hardening items automated tests cannot reach: long-running
+fuzzing, oversized payloads, many-client churn, and an idle-hour-then-resume.
+
+**Exit criteria.** The checklist passes end to end; a session of deliberate abuse
+produces no server stack traces; and everything it turns up is fixed. Fixes are Phase-4
+work — *finding* them is this phase.
+
+**Do not start Phase 5 on an unvalidated backend.** The entire value of the sign-off is
+that a bug found while building the browser client is conclusively a client bug, and that
+only holds if the backend has been exercised by real play first.
+
 ## Then — Phase 5: the browser client (SEPARATE PRIVATE REPO)
 
 **Purely a new browser client against the Phase-4 protocol. No server or protocol work
@@ -1019,10 +1056,11 @@ Phase-5 scope (from the list above): player colour selection, the MOO-faithful g
 subset, per-design partial fleet deploys, and the Mac-port interaction feel
 (`mac-ux-spec.md`).
 
-## Then — Phase 6: hosting on Oracle, with a game launcher
+## Then — Phase 6: hosting, with a game launcher
 
 Moved out of Phase 4 (user decision, 2026-08-09) — deployment is not backend
-functionality, and lumping it in obscured what Phase 4 actually owed.
+functionality, and lumping it in obscured what Phase 4 actually owed. Initial testing
+targets **Scaleway** rather than Oracle (2026-08-09); note their VMs are **not free**.
 
 Already built and smoke-tested (see **`docs/deployment.md`** and `deploy/`): the
 `bind=` / `keystore=` / `keystorePassword=` / `savedir=` server arguments, the
