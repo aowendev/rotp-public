@@ -17,7 +17,7 @@ Full design in [`docs/multiplayer-design.md`](docs/multiplayer-design.md); if yo
 
 - **Server-authoritative**: the server runs the real `GameSession`/`Galaxy` model. Clients never hold trusted state.
 - **JSON + WebSocket wire protocol** (`rotp.mp.protocol`): messages use a `{"t": <type>, "d": <payload>}` envelope. Game state is sent as per-player `PlayerView` documents built from each empire's fog-of-war data (`SystemInfo`/`EmpireView`), so a client only ever receives what its empire legitimately knows.
-- **We-go turns**: all players issue orders simultaneously; the server resolves the turn when everyone is ready. Mid-turn interactive events (combat tactics, tech choices, incoming diplomacy, council votes) are auto-resolved by each empire's own AI — the approach the MOO2/MOO3 multiplayer community converged on — with optional interactivity planned for a later phase. Player-to-player diplomacy will happen asynchronously during the order phase.
+- **We-go turns**: all players issue orders simultaneously; the server resolves the turn when everyone is ready. Mid-turn decisions reach the player as **prompts** — which technology to research or to steal, an incoming treaty or joint-war offer, a council vote, whether to colonise or bombard, what to sabotage — each self-contained and each safely ignorable, since the server falls back to that empire's AI default. **Ship combat is the deliberate exception and auto-resolves**: an interactive battle is a multi-round screen inside a simultaneous turn, so every other player would sit and wait. The decisions *around* a battle are still the player's.
 - **`SessionUI` seam** (`rotp.model.game.SessionUI`): game-session and turn processing no longer call the Swing UI directly. The desktop game registers `RotPUI` as the implementation; the server registers a headless one. This is what lets the unmodified game engine run on a server with no display.
 - **Two control predicates on `Empire`** (the key multiplayer refactor): `isAIControlled()` still answers "should interactive prompts auto-resolve?" — true for every empire on the server, so combat, tech picks, and diplomacy never try to open UI. The new `decidedByAI()` answers "may the AI overwrite this empire's strategic orders?" — false for empires flagged `remoteHuman`, so wire orders survive turn resolution. Anyone adding AI decision code must gate it on `decidedByAI()`, not `isAIControlled()`.
 
@@ -27,11 +27,14 @@ Requires JDK 17+ and Maven:
 
 ```
 mvn compile          # compile
-mvn test             # run the multiplayer integration tests (~30s, headless)
-mvn package          # fat jar in target/ (large: embeds all game assets)
+mvn test             # run the multiplayer integration tests (headless)
+mvn package          # two jars in target/: the full one (~969MB, embeds all game
+                     # assets) and rotp-client.jar (~3MB, multiplayer client only)
 ```
 
-The tests (`itest/rotp/mp/`) boot a real headless server in-process and drive it over the wire; see the design doc's Verification section.
+The tests (`itest/rotp/mp/`) boot a real headless server in-process and drive it over the wire; see the design doc's Verification section. On a loaded machine a single `mvn test` can wedge — run one class per invocation if it does, and watch the **skip** count as well as failures (see the test-env note in the handoff doc).
+
+**The wire protocol is an open standard.** [`docs/protocol.md`](docs/protocol.md) and [`docs/protocol-implementers-guide.md`](docs/protocol-implementers-guide.md) are released under **CC0** — not the GPL covering the rest of this repository — with an explicit implementation grant. Anyone may implement the protocol in any language, in software under any licence, open or proprietary, with no obligation to this project.
 
 For development, run from the compiled classes instead of repackaging:
 
@@ -47,7 +50,8 @@ One jar, three modes:
 ```
 java -jar target/rotp-*.jar                                  # classic offline single-player (unchanged)
 java -jar target/rotp-*.jar --server port=8777 players=2     # headless multiplayer server
-java -jar target/rotp-*.jar --client host=localhost port=8777 name=Alice
+java -jar target/rotp-client.jar --client host=localhost port=8777 name=Alice
+java -jar target/rotp-client.jar --client url=wss://host/game/1 name=Alice   # hosted game
 ```
 
 `players=` is the human capacity: the game auto-starts once that many join. The **first client to join is the host** and can start the game earlier from the lobby, choosing how many AI opponents to add — so a lone player can start a game against AI (solo-vs-AI on LAN). For LAN play, clients use the host machine's address; for internet play, the same server can run on any reachable machine.

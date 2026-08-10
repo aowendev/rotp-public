@@ -159,17 +159,50 @@ things a person can do that it cannot.
 - [ ] **7.4 Ordinary save/resume.** Host saves (⌘S), server restarts with
       `load=<name>`, both players reconnect to their own empires.
 
-## 8. Known gaps — expect these to behave "wrong"
+## 8. Espionage and joint war — newest, least exercised
 
-Not bugs; unimplemented. Confirm they behave as described so they are not
-mistaken for regressions.
+Added after this checklist was first written, so nothing here has been played.
 
-- [ ] **8.1 Stealing technology.** After a successful espionage mission the AI
-      picks which tech is stolen — you are not offered the choice. MOO1 offers it.
-- [ ] **8.2 Sabotage target.** Likewise chosen for you.
-- [ ] **8.3 Joint war** cannot be proposed at all.
-- [ ] **8.4 Ship combat is never interactive.** Deliberate: a tactical battle
-      would stall every other player. Only the decisions around it are yours.
+- [ ] **8.1 Stealing technology.** Run an ESPIONAGE mission until it succeeds. You
+      should be asked **which technology category** to take, with the technology
+      each would yield. Choose one and confirm you receive it.
+- [ ] **8.2 Ignore that prompt.** The theft is *not* lost — your own AI picks when
+      the turn resolves. Confirm you still get a technology.
+- [ ] **8.3 Sabotage.** Run a SABOTAGE mission. You should be asked to choose
+      between destroying factories, destroying missile bases, and inciting
+      rebellion, **each naming the system it would hit**. Confirm the damage lands
+      on that system.
+- [ ] **8.4 Joint war, outgoing.** Races → Audience → Propose a joint war. Pick who
+      they should fight. They agree, refuse, or **name a price** in technologies and
+      BC — pay it and confirm the war starts.
+- [ ] **8.5 Joint war, human to human.** Alice asks Bob to fight a third empire.
+      **Bob must be prompted**; Alice gets no instant verdict, and Bob is not at war
+      until he agrees.
+- [ ] **8.6 Joint war needs reach.** If the option is missing, that is probably
+      correct: both of you must be within *economic range* of the target. Contact
+      alone is not enough. Not a bug.
+
+## 9. The planetary reserve
+
+Both directions, including the MOO1 "bank a share of everything" behaviour.
+
+- [ ] **9.1 Set an empire tax** (Planet List → Planetary reserve → Tax colonies %).
+      This is the automatic proportion-of-production route into the reserve. End a
+      turn and confirm the reserve grows.
+- [ ] **9.2 Developed-colonies-only.** Toggle it and confirm the take changes.
+- [ ] **9.3 Spend it.** Select a colony, enter BC, Transfer. The colony's reserve
+      figure rises and the empire reserve falls.
+- [ ] **9.4 The 50% haircut is expected.** Banking is lossy — the engine halves what
+      the tax takes. Spending it back out is lossless. Not a bug; see
+      `moo1-differences.md` §4.
+
+## 10. Deliberately absent — expect these to behave "wrong"
+
+Not gaps; decisions.
+
+- [ ] **10.1 Ship combat is never interactive.** A tactical battle would stall every
+      other player, so battles auto-resolve. Only the decisions around them —
+      bombard, invade — are yours.
 
 ---
 

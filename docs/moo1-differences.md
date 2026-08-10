@@ -101,9 +101,10 @@ when it's confirmed against the Mac port, mark it — that's the gold standard h
   economy multiplier (the human's rules are unchanged). Need the OSG's MOO1 numbers
   to line them up.
 
-### 4. Planetary reserve — **pending guide**
+### 4. Planetary reserve — **resolved for multiplayer; MOO1 numbers still pending**
 - **MOO1:** a galactic reserve you could pay into and draw from (Mac-port Planets
-  window offered both directions). *(Pending guide: banking loss %, transfer rules.)*
+  window offered both directions), including **automatically directing a proportion of
+  all planetary production into it**. *(Pending guide: banking loss %, transfer rules.)*
 - **ROTP:** the reserve **auto-fills** from excess colony output (e.g. a maxed
   colony's surplus ecology BC — the "Reserve" hint on the colony screen).
   `Empire.allocateReserve(col, amt)` moves reserve→colony **losslessly**;
