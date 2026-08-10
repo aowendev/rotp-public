@@ -101,6 +101,20 @@ public class GameServer extends WebSocketServer {
     /** sabotage missions in position but not yet directed by a remote human, keyed by
      * the saboteur's empire id. Finalized with the AI's choice if left unanswered. */
     private final Map<Integer, List<rotp.ui.notifications.SabotageNotification>> pendingSabotage = new HashMap<>();
+    /** joint-war counter-offers awaiting payment, keyed by the empire that asked.
+     * Held server-side so an `acceptJointWarCounter` cannot invent a bribe that was
+     * never demanded, and cleared when the turn resolves — a price is for now. */
+    private final Map<Integer, List<PendingJointWar>> pendingJointWars = new HashMap<>();
+
+    /** a counter-offer an empire made when asked to join a war */
+    private static final class PendingJointWar {
+        final int targetId;
+        final rotp.ui.diplomacy.DiplomaticCounterReply counter;
+        PendingJointWar(int targetId, rotp.ui.diplomacy.DiplomaticCounterReply counter) {
+            this.targetId = targetId;
+            this.counter = counter;
+        }
+    }
     /** public galactic news (GNN) from this turn, broadcast to every client as NEWS notifications */
     private final List<Messages.Notification> pendingPublicNews = new ArrayList<>();
     /** combat/spy GameAlerts from this turn, keyed by the recipient empire id (the human
@@ -350,6 +364,10 @@ public class GameServer extends WebSocketServer {
             handleCommand(conn, "stealTech", (Messages.StealTech) msg);
         else if (msg instanceof Messages.Sabotage)
             handleCommand(conn, "sabotage", (Messages.Sabotage) msg);
+        else if (msg instanceof Messages.OfferJointWar)
+            handleCommand(conn, "offerJointWar", (Messages.OfferJointWar) msg);
+        else if (msg instanceof Messages.AcceptJointWarCounter)
+            handleCommand(conn, "acceptJointWarCounter", (Messages.AcceptJointWarCounter) msg);
         else if (msg instanceof Messages.CastCouncilVote)
             handleCommand(conn, "castCouncilVote", (Messages.CastCouncilVote) msg);
         else if (msg instanceof Messages.DesignCatalog)
@@ -957,6 +975,7 @@ public class GameServer extends WebSocketServer {
                 finalizePendingCouncilVote();
                 finalizePendingSteals();
                 finalizePendingSabotage();
+                pendingJointWars.clear();   // a price named last turn is not still open
                 keepGalaxyTurning();
                 session.nextTurn();
                 // nextTurn() spawns the turn thread; wait for it to finish
@@ -1091,6 +1110,10 @@ public class GameServer extends WebSocketServer {
                 err = applyStealTech(emp, (Messages.StealTech) cmd);
             else if (cmd instanceof Messages.Sabotage)
                 err = applySabotage(emp, (Messages.Sabotage) cmd);
+            else if (cmd instanceof Messages.OfferJointWar)
+                err = applyOfferJointWar(conn, emp, (Messages.OfferJointWar) cmd);
+            else if (cmd instanceof Messages.AcceptJointWarCounter)
+                err = applyAcceptJointWarCounter(conn, emp, (Messages.AcceptJointWarCounter) cmd);
             else
                 err = applyCastCouncilVote(emp, (Messages.CastCouncilVote) cmd);
         }
@@ -1634,7 +1657,7 @@ public class GameServer extends WebSocketServer {
                 reply = target.diplomatAI().receiveOfferAlliance(emp);
                 break;
             default:
-                return "Action must be TRADE, PEACE, PACT, or ALLIANCE";
+                return "Action must be TRADE, PEACE, PACT, ALLIANCE, or JOINT_WAR";
         }
         Messages.DiploReply dr = new Messages.DiploReply();
         dr.empireId = cmd.empireId;
@@ -1684,6 +1707,16 @@ public class GameServer extends WebSocketServer {
             for (Tech t : emp.diplomatAI().offerableTechnologies(other))
                 menu.canGift.add(techOption(t));
             menu.aidAmounts.addAll(emp.diplomatAI().offerAidAmounts());
+            // empires we could ask them to fight: the ones they are not already
+            // enemies with, that we know of (the same list the desktop menu offers)
+            for (Empire t : other.nonEnemiesKnownBy(emp)) {
+                if ((t == null) || (t == emp))
+                    continue;
+                Messages.EmpireOption o = new Messages.EmpireOption();
+                o.id = t.id;
+                o.name = t.name();
+                menu.jointWarTargets.add(o);
+            }
         }
         send(conn, Protocol.encode(menu));
     }
@@ -1838,6 +1871,92 @@ public class GameServer extends WebSocketServer {
         return null;
     }
 
+    /**
+     * Ask an empire to join a war against a third party. They may agree, refuse, or
+     * name a price in technologies and BC — a counter-offer, which the player pays
+     * with acceptJointWarCounter or lets lapse. Against another *human* the offer
+     * defers to their own prompt, the same rule as every other diplomatic approach.
+     */
+    private String applyOfferJointWar(WebSocket conn, Empire emp, Messages.OfferJointWar cmd) {
+        EmpireView ev = contactedView(emp, cmd.empireId);
+        if (ev == null)
+            return "No contact with that empire";
+        Empire ally = galaxy().empire(cmd.empireId);
+        Empire target = galaxy().empire(cmd.targetId);
+        if ((target == null) || target.extinct())
+            return "No such empire to declare war on";
+        if (target == emp)
+            return "You cannot ask them to declare war on you";
+        if (!ally.nonEnemiesKnownBy(emp).contains(target))
+            return "They are already at war with that empire, or you do not know of it";
+
+        DiplomaticReply reply = ally.diplomatAI().receiveOfferJointWar(emp, target);
+        if (reply == null)
+            return null;    // deferred to another human; they answer the prompt
+
+        if (reply.accepted() && (reply instanceof rotp.ui.diplomacy.DiplomaticCounterReply)) {
+            rotp.ui.diplomacy.DiplomaticCounterReply counter =
+                (rotp.ui.diplomacy.DiplomaticCounterReply) reply;
+            pendingJointWars.computeIfAbsent(emp.id, k -> new ArrayList<>())
+                            .add(new PendingJointWar(target.id, counter));
+            Messages.JointWarCounter jc = new Messages.JointWarCounter();
+            jc.empireId = cmd.empireId;
+            jc.targetId = target.id;
+            jc.bribe = counter.bribeAmt();
+            jc.text = reply.text();
+            for (String techId : counter.techs()) {
+                Tech t = techFrom(techId);
+                if (t != null)
+                    jc.techs.add(techOption(t));
+            }
+            send(conn, Protocol.encode(jc));
+            return null;
+        }
+
+        Messages.DiploReply dr = new Messages.DiploReply();
+        dr.empireId = cmd.empireId;
+        dr.action = "JOINT_WAR";
+        dr.accepted = reply.accepted();
+        dr.text = reply.text();
+        send(conn, Protocol.encode(dr));
+        return null;
+    }
+
+    /** pay the price they named and seal the joint war */
+    private String applyAcceptJointWarCounter(WebSocket conn, Empire emp, Messages.AcceptJointWarCounter cmd) {
+        EmpireView ev = contactedView(emp, cmd.empireId);
+        if (ev == null)
+            return "No contact with that empire";
+        PendingJointWar pending = takePendingJointWar(emp.id, cmd.targetId);
+        if (pending == null)
+            return "They have not named a price for that war";
+        if (emp.totalReserve() < pending.counter.bribeAmt())
+            return "You cannot afford the "+pending.counter.bribeAmt()+" BC they want";
+        Empire ally = galaxy().empire(cmd.empireId);
+        DiplomaticReply reply = ally.diplomatAI().receiveCounterJointWar(emp, pending.counter);
+        Messages.DiploReply dr = new Messages.DiploReply();
+        dr.empireId = cmd.empireId;
+        dr.action = "JOINT_WAR";
+        dr.accepted = (reply == null) || reply.accepted();
+        dr.text = (reply == null) ? "" : reply.text();
+        send(conn, Protocol.encode(dr));
+        return null;
+    }
+
+    private PendingJointWar takePendingJointWar(int askerId, int targetId) {
+        List<PendingJointWar> queued = pendingJointWars.get(askerId);
+        if (queued == null)
+            return null;
+        for (java.util.Iterator<PendingJointWar> it = queued.iterator(); it.hasNext(); ) {
+            PendingJointWar pjw = it.next();
+            if (pjw.targetId == targetId) {
+                it.remove();
+                return pjw;
+            }
+        }
+        return null;
+    }
+
     /** a demand backed by nothing but menace; the target's leader decides how it lands */
     private String applyThreaten(WebSocket conn, Empire emp, Messages.Threaten cmd) {
         EmpireView ev = contactedView(emp, cmd.empireId);
@@ -1975,8 +2094,21 @@ public class GameServer extends WebSocketServer {
                 else
                     emp.diplomatAI().refuseOfferAlliance(requestor);
                 return null;
+            case "JOINT_WAR": {
+                // the only answer that needs a third empire: who they want you to fight
+                Empire jwTarget = galaxy().empire(cmd.targetEmpireId);
+                if ((jwTarget == null) || jwTarget.extinct())
+                    return "No such empire to declare war on";
+                if (jwTarget == emp)
+                    return "You cannot declare war on yourself";
+                if (cmd.accept)
+                    emp.diplomatAI().acceptOfferJointWar(requestor, jwTarget);
+                else
+                    emp.diplomatAI().refuseOfferJointWar(requestor, jwTarget);
+                return null;
+            }
             default:
-                return "Action must be TRADE, PEACE, PACT, or ALLIANCE";
+                return "Action must be TRADE, PEACE, PACT, ALLIANCE, or JOINT_WAR";
         }
     }
 
@@ -2319,6 +2451,13 @@ public class GameServer extends WebSocketServer {
         p.action = action;
         p.empireId = requestor.id;
         p.text = requestor.name() + " proposes " + diploLabel(action);
+        if ("JOINT_WAR".equals(action)) {
+            Empire jwTarget = dn.otherEmpire();
+            if (jwTarget == null)
+                return;    // a joint war with no named enemy is not answerable
+            p.targetEmpireId = jwTarget.id;
+            p.text = requestor.name() + " asks you to join their war against " + jwTarget.name();
+        }
         pendingPrompts.computeIfAbsent(target.id, k -> new ArrayList<>()).add(p);
     }
 
@@ -2680,6 +2819,7 @@ public class GameServer extends WebSocketServer {
         if (DialogueManager.OFFER_PEACE.equals(type))    return "PEACE";
         if (DialogueManager.OFFER_PACT.equals(type))     return "PACT";
         if (DialogueManager.OFFER_ALLIANCE.equals(type)) return "ALLIANCE";
+        if (DialogueManager.OFFER_JOINT_WAR.equals(type)) return "JOINT_WAR";
         return null;
     }
 
@@ -2689,6 +2829,7 @@ public class GameServer extends WebSocketServer {
             case "PEACE":    return "a peace treaty";
             case "PACT":     return "a non-aggression pact";
             case "ALLIANCE": return "an alliance";
+            case "JOINT_WAR": return "a joint war";
             default:         return action;
         }
     }

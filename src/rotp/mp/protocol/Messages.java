@@ -401,6 +401,12 @@ public final class Messages {
         public int cost;       // research cost, the rough "worth" of the trade
     }
 
+    /** an empire as an option in a menu (a joint-war target) */
+    public static class EmpireOption {
+        public int id;
+        public String name;
+    }
+
     /** client -> server: what can I currently do with this empire diplomatically?
      * Answered with a {@link TechTradeMenu}. */
     public static class DiploOptions {
@@ -423,6 +429,9 @@ public final class Messages {
         public List<TechOption> canRequest = new ArrayList<>();  // their techs you may ask for
         public List<TechOption> canGift = new ArrayList<>();     // your techs you may give
         public List<Integer> aidAmounts = new ArrayList<>();     // BC gifts you can afford
+        /** empires you could ask them to join a war against — those they are not
+         * already at war with, that you know of. Empty if none. */
+        public List<EmpireOption> jointWarTargets = new ArrayList<>();
     }
 
     /** client -> server: ask an empire for one of their technologies. They answer
@@ -468,6 +477,34 @@ public final class Messages {
         public int empireId;
         public int amount;
         public String techId;
+    }
+
+    /**
+     * client -> server: ask an empire to join you in a war against `targetId`.
+     * They may agree outright, refuse, or **name a price** — a
+     * {@link JointWarCounter} of technologies and BC — which you close with
+     * {@link AcceptJointWarCounter} or simply ignore.
+     */
+    public static class OfferJointWar {
+        public int empireId;
+        public int targetId;
+    }
+
+    /** server -> client: their price for joining the war. Techs and BC come out of
+     * your empire if you accept; the bribe is refused automatically if your reserve
+     * cannot cover it. */
+    public static class JointWarCounter {
+        public int empireId;
+        public int targetId;
+        public int bribe;                              // BC demanded
+        public List<TechOption> techs = new ArrayList<>();   // technologies demanded
+        public String text;                            // their words
+    }
+
+    /** client -> server: pay the price and seal the joint war */
+    public static class AcceptJointWarCounter {
+        public int empireId;
+        public int targetId;
     }
 
     /** client -> server: a demand backed by nothing but menace.
@@ -576,6 +613,8 @@ public final class Messages {
         // resolve with RespondTechRequest, or ignore to refuse.
         public String techId;
         public String techName;
+        /** INCOMING_DIPLOMACY with action JOINT_WAR: who they want you to fight */
+        public int targetEmpireId = -1;
     }
 
     /**
@@ -587,6 +626,8 @@ public final class Messages {
         public int empireId;
         public String action;
         public boolean accept;
+        /** JOINT_WAR only: the empire they want you to declare war on */
+        public int targetEmpireId = -1;
     }
 
     /**

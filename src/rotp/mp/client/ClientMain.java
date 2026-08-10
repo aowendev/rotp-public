@@ -446,6 +446,9 @@ public class ClientMain {
         else if (msg instanceof Messages.TechTradeMenu) {
             racesPanel.showAudience((Messages.TechTradeMenu) msg);
         }
+        else if (msg instanceof Messages.JointWarCounter) {
+            racesPanel.showJointWarCounter((Messages.JointWarCounter) msg);
+        }
         else if (msg instanceof Messages.TechCounterOffer) {
             // the second half of a tech exchange: their price for what you asked for
             racesPanel.showCounterOffer((Messages.TechCounterOffer) msg);
@@ -486,6 +489,7 @@ public class ClientMain {
         rd.empireId = p.empireId;
         rd.action = p.action;
         rd.accept = (pick == javax.swing.JOptionPane.YES_OPTION);
+        rd.targetEmpireId = p.targetEmpireId;   // JOINT_WAR: who they want you to fight
         client.sendMessage(rd);
     }
 

@@ -126,12 +126,14 @@ life of a game and are what you send back.
 | `diploOffer` | `empireId:int`, `action:string`, `tradeLevel:int` | `TRADE` (with `tradeLevel`) \| `PEACE` \| `PACT` \| `ALLIANCE`. |
 | `breakTreaty` | `empireId:int`, `treaty:string` | `TRADE` \| `PACT` \| `ALLIANCE`. |
 | `declareWar` | `empireId:int` | |
-| `respondDiplomacy` | `empireId:int`, `action:string`, `accept:boolean` | Answer an `INCOMING_DIPLOMACY` prompt. |
+| `respondDiplomacy` | `empireId:int`, `action:string`, `accept:boolean`, `targetEmpireId:int` | Answer an `INCOMING_DIPLOMACY` prompt. `targetEmpireId` is required for `JOINT_WAR` and ignored otherwise. |
 | `requestTech` | `empireId:int`, `techId:string` | Ask for one of their technologies. Answered by `techCounterOffer`, or a refusing `diploReply`. |
 | `counterOfferTech` | `empireId:int`, `requestedTechId:string`, `offeredTechId:string` | Pay the price they named and close the exchange. |
 | `respondTechRequest` | `requestorId:int`, `counterTechId:string?` | Answer an `INCOMING_TECH_REQUEST`. `counterTechId` is the tech of *theirs* you demand; null or empty refuses. |
 | `offerAid` | `empireId:int`, `amount:int`, `techId:string?` | A gift. Send **exactly one** of `amount` (from the menu's `aidAmounts`) or `techId`. |
 | `threaten` | `empireId:int`, `threat:string` | `EVICT_SPIES` \| `STOP_SPYING` \| `STOP_ATTACKING`. |
+| `offerJointWar` | `empireId:int`, `targetId:int` | Ask them to join a war against `targetId`. They agree, refuse, or answer with a `jointWarCounter` naming a price. |
+| `acceptJointWarCounter` | `empireId:int`, `targetId:int` | Pay the price they named and seal it. The offer lapses when the turn resolves. |
 | `castCouncilVote` | `candidateId:int` | Answer a `COUNCIL_VOTE` prompt. `-1` abstains. |
 
 ## 3. Server → client
@@ -152,6 +154,7 @@ life of a game and are what you send back.
 | `diploReply` | `empireId:int`, `action:string`, `accepted:boolean`, `text:string` | A verdict on something you offered. |
 | `techTradeMenu` | *(see below)* | Answer to `diploOptions`. |
 | `techCounterOffer` | `empireId:int`, `requestedTechId:string`, `requestedTechName:string`, `text:string`, `counterOptions:[TechOption]` | Their price for the tech you asked for. |
+| `jointWarCounter` | `empireId:int`, `targetId:int`, `bribe:int`, `techs:[TechOption]`, `text:string` | Their price for joining a war. Close it with `acceptJointWarCounter`, or let it lapse. |
 | `colonyPreview` | `systemId:int`, `result:string[5]` | Answer to `previewColony`. Show as provisional. |
 | `designCatalog` | `hulls`, `computers`, `shields`, `ecms`, `armors`, `engines`, `maneuvers`, `weapons`, `specials` — all `string[]` | Component names for the design screen. Index 0 of each is "none". |
 | `gameOver` | `won:boolean`, `reason:string`, `text:string` | Your own outcome. Sent once. |
@@ -159,7 +162,9 @@ life of a game and are what you send back.
 
 `techTradeMenu`: `empireId:int`, `canExchangeTech`, `canOfferAid`, `canThreatenSpying`,
 `canThreatenAttacking`, `canEvictSpies` *(all boolean)*, `canRequest:[TechOption]`,
-`canGift:[TechOption]`, `aidAmounts:int[]`.
+`canGift:[TechOption]`, `aidAmounts:int[]`, `jointWarTargets:[EmpireOption]`.
+
+`EmpireOption`: `id:int`, `name:string` — an empire you could ask them to fight.
 
 `TechOption`: `id:string`, `name:string`, `quintile:int` (tier), `cost:int` (research
 cost — the rough worth of a deal).
@@ -233,7 +238,7 @@ Ignoring is a real choice with real consequences, not an error state.
 | `type` | Carries | Resolve with |
 |---|---|---|
 | `SELECT_TECH` | `category`, `choiceIds`, `choiceNames` | `setResearchChoice` |
-| `INCOMING_DIPLOMACY` | `empireId`, `action` | `respondDiplomacy` |
+| `INCOMING_DIPLOMACY` | `empireId`, `action`, and for `JOINT_WAR` also `targetEmpireId` | `respondDiplomacy` (echo `targetEmpireId` back for `JOINT_WAR`) |
 | `COUNCIL_VOTE` | `choiceIds`, `choiceNames` (last entry is `-1`, abstain) | `castCouncilVote` |
 | `COLONIZE` | `systemId` | `colonize` — ignoring leaves the ship in orbit and re-asks next turn |
 | `INCOMING_TECH_REQUEST` | `empireId`, `techId`, `techName`, `choiceIds`, `choiceNames` (their techs you may demand) | `respondTechRequest` — ignoring refuses, and the request lapses with the turn |
@@ -261,9 +266,7 @@ usable as a fallback, but the structured fields are there so you can write your 
 
 ## 7. Not yet on the wire
 
-Being added to the server. Do not design around their absence.
-
-- **Joint war offers** — the one diplomatic action with no protocol equivalent.
+Nothing. Every decision a player can make in the desktop game is on the wire.
 
 ## 8. Deliberately absent
 

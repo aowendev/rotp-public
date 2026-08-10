@@ -790,7 +790,10 @@ public class AIDiplomat implements Base, Diplomat {
     @Override
     public DiplomaticReply receiveOfferJointWar(Empire requestor, Empire target) {
         log(empire.name(), " receiving offer of Joint War from: ", requestor.name());
-        if (empire.isPlayerControlled()) {
+        // !decidedByAI() rather than isPlayerControlled(): a no-op for single-player,
+        // but it also defers for a REMOTE human, whose empire is AI-controlled on the
+        // server - otherwise their AI would commit them to someone else's war.
+        if (!empire.decidedByAI()) {
             DiplomaticNotification.create(requestor.viewForEmpire(empire), DialogueManager.OFFER_JOINT_WAR, target);
             return null;
         }

@@ -337,6 +337,8 @@ public class RacesPanel extends JPanel {
             choices.add("Give money");
         if (menu.canOfferAid && !menu.canGift.isEmpty())
             choices.add("Give technology");
+        if (!menu.jointWarTargets.isEmpty())
+            choices.add("Propose a joint war");
         // the desktop audience wording (labels.txt DIPLOMACY_MENU_*)
         if (menu.canEvictSpies)
             choices.add("Remove All Spies (lowers relations)");
@@ -359,6 +361,7 @@ public class RacesPanel extends JPanel {
             case "Exchange technology": askForTech(menu, who); break;
             case "Give money":          giveMoney(menu, who); break;
             case "Give technology":     giveTech(menu, who); break;
+            case "Propose a joint war": proposeJointWar(menu, who); break;
             case "Remove All Spies (lowers relations)": threaten(menu.empireId, "EVICT_SPIES"); break;
             case "Stop Spying Activities":             threaten(menu.empireId, "STOP_SPYING"); break;
             case "Stop Attacking":                     threaten(menu.empireId, "STOP_ATTACKING"); break;
@@ -458,6 +461,57 @@ public class RacesPanel extends JPanel {
         m.empireId = menu.empireId;
         m.techId = t.id;
         orderSender.accept(m);
+    }
+
+    /** ask them to join a war against a third empire */
+    private void proposeJointWar(Messages.TechTradeMenu menu, String who) {
+        String[] names = new String[menu.jointWarTargets.size()];
+        for (int i = 0; i < names.length; i++)
+            names[i] = menu.jointWarTargets.get(i).name;
+        String pick = (String) JOptionPane.showInputDialog(this,
+            "Who should " + who + " declare war on?", "Joint War",
+            JOptionPane.PLAIN_MESSAGE, null, names, names[0]);
+        if (pick == null)
+            return;
+        for (int i = 0; i < names.length; i++) {
+            if (names[i].equals(pick)) {
+                Messages.OfferJointWar m = new Messages.OfferJointWar();
+                m.empireId = menu.empireId;
+                m.targetId = menu.jointWarTargets.get(i).id;
+                orderSender.accept(m);
+                return;
+            }
+        }
+    }
+
+    /**
+     * They will join the war, for a price. Techs and BC leave your empire if you
+     * agree; walking away costs nothing but the offer lapses with the turn.
+     */
+    public void showJointWarCounter(Messages.JointWarCounter c) {
+        if (c == null)
+            return;
+        String who = empireName(c.empireId);
+        StringBuilder price = new StringBuilder();
+        for (Messages.TechOption t : c.techs)
+            price.append("\n  ").append(t.name);
+        if (c.bribe > 0)
+            price.append("\n  ").append(c.bribe).append(" BC");
+        if (price.length() == 0)
+            price.append("\n  (nothing)");
+        String preamble = ((c.text == null) || c.text.isEmpty()) ? "" : c.text + "\n\n";
+        int pick = JOptionPane.showConfirmDialog(this,
+            preamble + who + " will join the war against " + empireName(c.targetId)
+            + " in exchange for:" + price + "\n\nAgree?",
+            "Joint War - " + who, JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+        if (pick != JOptionPane.YES_OPTION) {
+            replyLog.append("You declined " + who + "'s price for the war\n");
+            return;
+        }
+        Messages.AcceptJointWarCounter a = new Messages.AcceptJointWarCounter();
+        a.empireId = c.empireId;
+        a.targetId = c.targetId;
+        orderSender.accept(a);
     }
 
     private void threaten(int empireId, String threat) {

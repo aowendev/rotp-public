@@ -42,13 +42,14 @@ a council vote that survives save/load, the fuller diplomacy backend (tech excha
 counter-offers, aid, threats), per-empire multi-human outcomes, and the bombardment
 choice. **Ship combat auto-resolves by decision** (2026-08-09) — a tactical battle would
 stall every other player — so only the decisions *around* combat are on the wire.
-**One item remains open** (steal-tech and sabotage-target landed 2026-08-09; the four
-were all confirmed in scope by the user, not to be dropped or pushed to
-Phase 5): **joint war offers**. Plus **server error-hardening** as a standing requirement
-(anything that could cause an error on the server must be resolved before Phase 5). Hosting moved to **Phase 6** (Scaleway for initial testing;
+**Phase 4's functional work is COMPLETE (2026-08-10)** — the last item, joint war,
+landed. What remains before Phase 4 can be called done is **validation by human-vs-human
+play** (`mp-test-scenarios.md`) and the standing server-hardening requirement. Historical
+note: this list previously read (steal-tech and sabotage-target landed 2026-08-09; the four
+were all confirmed in scope as one open item, joint war offers. Hosting moved to **Phase 6** (Scaleway for initial testing;
 it also owes a front end that spins up a JVM per game). **Phase 5 is a separate private
 repo**, not under the ROTP licence.
-**114 tests green, 1 skip (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
+**117 tests green, 1 skip (incl. 2-human).** See "Then — Phase 3" / "Then — Phase 4"._
 
 ## Where we are
 
@@ -71,7 +72,7 @@ a lobby where the host can start against AI, **choose the galaxy size and AI
 ability (difficulty)**, and pick races; a **Races/diplomacy panel** on the client;
 and **client reconnection** so a game survives a client relaunch; colony sliders
 show **per-category result hints** (years/output/growth/RP) with **live
-projections and per-category locks**. **114 JUnit integration tests green, 1 skip (incl. 2-human end-to-end).**
+projections and per-category locks**. **117 JUnit integration tests green, 1 skip (incl. 2-human end-to-end).**
 
 **Phase 2 is complete** (see "Then — Phase 2"); **Phase 3 is complete for v1** — all seven
 increments (interactive tech selection; incoming diplomacy; council vote; colonize choice;
@@ -584,7 +585,7 @@ bulletins ARE carried.)
 end-to-end tested BEFORE starting the browser client (Phase 5)** — a fully proven,
 per-empire-correct backend means any bug found while building the browser client is
 purely a client bug. **All four items are now DONE (2026-08-09).** (Test count has since
-moved on with Phase 4 — 114 green, 1 skip.)
+moved on with Phase 4 — 117 green, 1 skip.)
 - **[1] Multi-human alert routing (DONE).** `GameAlert` base gained a `recipient` empire
   (defaults to `player()` when unset, so single-player/desktop are unchanged); each alert's
   `description()` frames from `recipient().sv`, and `create()` returns the instance so call
@@ -823,7 +824,19 @@ currently cannot. Everything here is a Phase-4 blocker under the definition abov
    system it would hit**, so the target is part of the visible choice rather than hidden
    behind it; resolved by `sabotage{empireId, action}`, and likewise finalized with the
    AI's choice if ignored. Tests: `SabotagePromptTest` (3).
-3. **Joint war offers — STILL OPEN.** The last one. — `receiveOfferJointWar` / `receiveCounterJointWar` and
+3. **Joint war offers — DONE (2026-08-10).** The last one. Two halves. **Outgoing**:
+   `diploOptions` now returns `jointWarTargets` (the empires they are not already
+   fighting, that you know of — the same list the desktop menu builds), and
+   `offerJointWar{empireId, targetId}` asks. They may agree, refuse, or **name a price**
+   in technologies and BC, which arrives as `jointWarCounter` and is closed with
+   `acceptJointWarCounter`. The counter is held server-side so a client cannot invent a
+   bribe that was never demanded, and it lapses when the turn resolves. **Incoming**: the
+   `receiveOfferJointWar` gate in all three AIDiplomats flipped from
+   `isPlayerControlled()` to `!decidedByAI()` — the same change Phase 3 made for the four
+   treaty offers — so it becomes an INCOMING_DIPLOMACY prompt with action `JOINT_WAR`.
+   That prompt needed a *third* empire id (`Prompt.targetEmpireId`, echoed back in
+   `RespondDiplomacy`), since it is the only diplomatic answer that names someone who is
+   not a party to the conversation. Tests: `JointWarTest` (3). — `receiveOfferJointWar` / `receiveCounterJointWar` and
    `DiplomacyJointWarMenu` have no protocol equivalent. The last audience action missing.
 4. **A written protocol specification — DONE (2026-08-09), and published here as an
    OPEN STANDARD.** `docs/protocol.md` (message reference) and
@@ -1075,10 +1088,14 @@ game launcher). See design doc §7.
 - **Traded techs are not learned on the spot.** `acquireTechThroughTrade` only records the
   tech in `tradedTechs()`; `TechTree.acquireTradedTechs()` learns it during turn processing.
   Anything asserting on a completed trade must advance a turn first.
-- **Economic range gates all diplomacy.** `canExchangeTechnology` / `canOfferAid` /
-  `canThreaten*` all require `inEconomicRange`, which compares fog-of-war distance to their
-  colonies against scout range. Two empires can be in contact and still unable to trade —
-  it is not a bug, and tests must engineer the range rather than assume it.
+- **Economic range gates all diplomacy, and it has caught three test suites now.**
+  `canExchangeTechnology` / `canOfferAid` / `canThreaten*` and `nonEnemiesKnownBy` all
+  require `inEconomicRange` — for joint war, on *both* sides — which compares fog-of-war
+  distance to their colonies against scout range. Two empires can be in contact and still
+  unable to trade or conspire; it is a real gameplay constraint, not a bug. Tests must
+  **engineer** the range rather than assume it: climb the fuel ladder, `refreshFullScan`
+  the colonies, and where a specific empire must be reachable, plant a colony beside it
+  (`settleNextDoor`). Assuming instead of engineering produces suites that silently skip.
 - **Colonize choice (Phase 3 increment 4).** A remote human's colony ship no longer
   auto-settles — arrival at a colonizable system raises a COLONIZE prompt, resolved with
   the `colonize` command (see `AI.checkColonize` gated on `decidedByAI()`). AI empires
@@ -1128,8 +1145,9 @@ game launcher). See design doc §7.
 - `itest/rotp/mp/` — integration tests + `MpTestSupport` harness (new:
   `RacesScreenTest`, `ReconnectTest`, `GalaxySizeTest`, `DifficultyTest`,
   `SaveLoadTest`; Phase 4 added `ReserveTest`, `DeploymentTest`, `TechTradeTest`,
-  `MultiHumanOutcomeTest`, `BombardPromptTest`, `AwayFromKeyboardTest` and
-  `ServerRobustnessTest`). The one skip is BombardPromptTest's main case, which needs a
+  `MultiHumanOutcomeTest`, `BombardPromptTest`, `AwayFromKeyboardTest`,
+  `ServerRobustnessTest`, `StealTechPromptTest`, `SabotagePromptTest` and
+  `JointWarTest`). The one skip is BombardPromptTest's main case, which needs a
   mid-game state a turn-1 galaxy cannot provide.
 - `deploy/` + `docs/deployment.md` — Phase-6 hosting: systemd template unit, per-game env
   file, and the Scaleway / Caddy / TLS runbook with measured per-game sizing.

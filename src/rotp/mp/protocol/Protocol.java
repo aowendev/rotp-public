@@ -89,6 +89,9 @@ public final class Protocol {
         register("bombard",        Messages.Bombard.class);
         register("stealTech",      Messages.StealTech.class);
         register("sabotage",       Messages.Sabotage.class);
+        register("offerJointWar",  Messages.OfferJointWar.class);
+        register("jointWarCounter", Messages.JointWarCounter.class);
+        register("acceptJointWarCounter", Messages.AcceptJointWarCounter.class);
         register("castCouncilVote", Messages.CastCouncilVote.class);
         register("cmdResult",      Messages.CommandResult.class);
         register("notifications",  Messages.Notifications.class);
